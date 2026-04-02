@@ -64,15 +64,17 @@ class QuranDatabase extends Dexie {
   verses!: Table<Verse, number>;
   khatamPlans!: Table<KhatamPlan, number>;
   dzikirCounts!: Table<DzikirCount, number>;
+  bookmarks!: Table<Bookmark, number>;
   syncMeta!: Table<SyncMeta, string>;
 
   constructor() {
     super('QuranAppDB');
-    this.version(1).stores({
+    this.version(2).stores({
       surahs: 'nomor, namaLatin',
       verses: '++id, surahNomor, [surahNomor+nomorAyat]',
       khatamPlans: '++id, isActive',
       dzikirCounts: '++id, date',
+      bookmarks: '++id, surahNomor, [surahNomor+nomorAyat], isLastRead, createdAt',
       syncMeta: 'key',
     });
   }
