@@ -43,6 +43,16 @@ export interface DzikirCount {
   date: string;
 }
 
+export interface Bookmark {
+  id?: number;
+  surahNomor: number;
+  surahNama: string;
+  surahNamaLatin: string;
+  nomorAyat: number;
+  createdAt: string;
+  isLastRead?: boolean;
+}
+
 export interface SyncMeta {
   key: string;
   value: string;
