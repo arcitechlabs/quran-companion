@@ -7,6 +7,7 @@ import AudioPlayer from "@/components/AudioPlayer";
 import HomePage from "./pages/HomePage";
 import QuranPage from "./pages/QuranPage";
 import SurahDetailPage from "./pages/SurahDetailPage";
+import JuzDetailPage from "./pages/JuzDetailPage";
 import PrayerTimesPage from "./pages/PrayerTimesPage";
 import DzikirPage from "./pages/DzikirPage";
 import KhatamPage from "./pages/KhatamPage";
@@ -50,6 +51,7 @@ const AppContent = () => {
         <Route path="/" element={<HomePage />} />
         <Route path="/quran" element={<QuranPage />} />
         <Route path="/quran/:id" element={<SurahDetailPage />} />
+        <Route path="/juz/:id" element={<JuzDetailPage />} />
         <Route path="/search" element={<SearchPage />} />
         <Route path="/qibla" element={<QiblaPage />} />
         <Route path="/hijriah" element={<HijriahCalendarPage />} />

@@ -1,4 +1,5 @@
 import { db, type Surah, type Verse } from './db';
+import { JUZ_DATA, type JuzRange } from './juzData';
 
 const API_BASE = 'https://equran.id/api/v2';
 
@@ -76,6 +77,43 @@ export async function getVerses(surahNumber: number): Promise<Verse[]> {
 export async function isSynced(): Promise<boolean> {
   const meta = await db.syncMeta.get('lastSync');
   return !!meta;
+}
+
+export async function getJuzVerses(juzNumber: number): Promise<{ verses: Verse[]; surahs: Surah[] }> {
+  const juz = JUZ_DATA.find(j => j.juz === juzNumber);
+  if (!juz) return { verses: [], surahs: [] };
+
+  const surahNumbers: number[] = [];
+  for (let i = juz.startSurah; i <= juz.endSurah; i++) {
+    surahNumbers.push(i);
+  }
+
+  // Fetch all surah data
+  const allSurahs = await db.surahs.bulkGet(surahNumbers);
+  const surahs = allSurahs.filter((s): s is Surah => !!s);
+
+  // Fetch verses for each surah in range
+  const allVerses: Verse[] = [];
+  for (const surahNum of surahNumbers) {
+    let verses = await db.verses.where('surahNomor').equals(surahNum).toArray();
+    if (verses.length === 0) {
+      verses = await fetchAndSyncVerses(surahNum);
+    }
+
+    // Filter verses within juz range
+    if (surahNum === juz.startSurah && surahNum === juz.endSurah) {
+      // Same surah start and end
+      verses = verses.filter(v => v.nomorAyat >= juz.startAyat && v.nomorAyat <= juz.endAyat);
+    } else if (surahNum === juz.startSurah) {
+      verses = verses.filter(v => v.nomorAyat >= juz.startAyat);
+    } else if (surahNum === juz.endSurah) {
+      verses = verses.filter(v => v.nomorAyat <= juz.endAyat);
+    }
+
+    allVerses.push(...verses.sort((a, b) => a.nomorAyat - b.nomorAyat));
+  }
+
+  return { verses: allVerses, surahs };
 }
 
 interface PrayerTimesResponse {

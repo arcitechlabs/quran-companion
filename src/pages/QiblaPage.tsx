@@ -1,5 +1,5 @@
-import { useEffect, useState, useRef, useCallback } from 'react';
-import { ArrowLeft, Loader2, MapPin, Navigation } from 'lucide-react';
+import { useEffect, useState, useCallback } from 'react';
+import { ArrowLeft, Loader2, MapPin, Navigation, Compass } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 const KAABA_LAT = 21.4225;
@@ -42,26 +42,49 @@ const QiblaPage = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [qiblaDirection, setQiblaDirection] = useState(0);
-  const [compassHeading, setCompassHeading] = useState(0);
+  const [compassHeading, setCompassHeading] = useState<number | null>(null);
   const [distance, setDistance] = useState(0);
   const [locationName, setLocationName] = useState('');
   const [hasCompass, setHasCompass] = useState(false);
-  const [userLat, setUserLat] = useState(0);
-  const [userLng, setUserLng] = useState(0);
+  const [needsPermission, setNeedsPermission] = useState(false);
 
   const handleOrientation = useCallback((event: DeviceOrientationEvent) => {
-    let heading = event.alpha;
-    if (heading === null || heading === undefined) return;
-
     const webkit = event as DeviceOrientationEvent & { webkitCompassHeading?: number };
     if (webkit.webkitCompassHeading !== undefined) {
-      heading = webkit.webkitCompassHeading;
-    } else {
-      heading = 360 - heading;
+      // iOS: webkitCompassHeading sudah dalam derajat dari Utara (clockwise)
+      setCompassHeading(webkit.webkitCompassHeading);
+    } else if (event.alpha !== null && event.alpha !== undefined) {
+      // Android: alpha adalah CCW dari Utara, konversi ke CW
+      setCompassHeading((360 - event.alpha) % 360);
     }
-
-    setCompassHeading(heading);
   }, []);
+
+  const startCompass = useCallback(() => {
+    // Android Chrome: gunakan deviceorientationabsolute untuk heading dari Utara magnetis
+    // Fallback ke deviceorientation jika tidak tersedia
+    const supportsAbsolute = 'ondeviceorientationabsolute' in window;
+    if (supportsAbsolute) {
+      window.addEventListener('deviceorientationabsolute', handleOrientation as EventListener, true);
+    } else {
+      window.addEventListener('deviceorientation', handleOrientation as EventListener, true);
+    }
+    setHasCompass(true);
+    setNeedsPermission(false);
+  }, [handleOrientation]);
+
+  const requestCompassPermission = useCallback(async () => {
+    const DONT = DeviceOrientationEvent as unknown as { requestPermission?: () => Promise<string> };
+    if (typeof DONT.requestPermission === 'function') {
+      try {
+        const permission = await DONT.requestPermission();
+        if (permission === 'granted') {
+          startCompass();
+        }
+      } catch {
+        // Permission denied or error
+      }
+    }
+  }, [startCompass]);
 
   useEffect(() => {
     const init = async () => {
@@ -80,8 +103,6 @@ const QiblaPage = () => {
           setLocationName('Jakarta (default)');
         }
 
-        setUserLat(lat);
-        setUserLng(lng);
         setQiblaDirection(calculateQiblaDirection(lat, lng));
         setDistance(calculateDistance(lat, lng));
         setLoading(false);
@@ -89,18 +110,11 @@ const QiblaPage = () => {
         if (typeof DeviceOrientationEvent !== 'undefined') {
           const DONT = DeviceOrientationEvent as unknown as { requestPermission?: () => Promise<string> };
           if (typeof DONT.requestPermission === 'function') {
-            try {
-              const permission = await DONT.requestPermission();
-              if (permission === 'granted') {
-                window.addEventListener('deviceorientation', handleOrientation as EventListener, true);
-                setHasCompass(true);
-              }
-            } catch {
-              setHasCompass(false);
-            }
+            // iOS 13+: need user gesture to request permission
+            setNeedsPermission(true);
           } else {
-            window.addEventListener('deviceorientation', handleOrientation as EventListener, true);
-            setHasCompass(true);
+            // Android / desktop: start directly
+            startCompass();
           }
         }
       } catch {
@@ -112,9 +126,17 @@ const QiblaPage = () => {
     init();
 
     return () => {
-      window.removeEventListener('deviceorientation', handleOrientation as EventListener);
+      window.removeEventListener('deviceorientationabsolute', handleOrientation as EventListener, true);
+      window.removeEventListener('deviceorientation', handleOrientation as EventListener, true);
     };
-  }, [handleOrientation]);
+  }, [handleOrientation, startCompass]);
+
+  // Arrow rotation:
+  // - With compass: rotate so arrow always points toward Kaaba as device rotates
+  // - Without compass: rotate arrow to show static qibla direction from North
+  const arrowRotation = hasCompass && compassHeading !== null
+    ? (qiblaDirection - compassHeading + 360) % 360
+    : qiblaDirection;
 
   if (loading) {
     return (
@@ -152,19 +174,18 @@ const QiblaPage = () => {
         <div className="relative w-64 h-64">
           {/* Compass ring */}
           <div className="absolute inset-0 rounded-full border-2 border-border bg-card/50">
-            {/* Cardinal directions */}
             <span className="absolute top-2 left-1/2 -translate-x-1/2 text-xs font-bold text-foreground">U</span>
             <span className="absolute bottom-2 left-1/2 -translate-x-1/2 text-xs font-bold text-muted-foreground">S</span>
             <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs font-bold text-muted-foreground">B</span>
             <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs font-bold text-muted-foreground">T</span>
           </div>
 
-          {/* Rotating compass needle */}
+          {/* Rotating qibla arrow */}
           <div
-            className="absolute inset-4 transition-transform duration-300 ease-out"
-            style={{ transform: `rotate(${compassRotation}deg)` }}
+            className="absolute inset-4 transition-transform duration-200 ease-out"
+            style={{ transform: `rotate(${arrowRotation}deg)` }}
           >
-            {/* Qibla arrow (green, pointing to Kaaba) */}
+            {/* Qibla arrow pointing up = direction of Kaaba */}
             <div className="absolute top-0 left-1/2 -translate-x-1/2 flex flex-col items-center">
               <div className="w-0 h-0 border-l-[8px] border-l-transparent border-r-[8px] border-r-transparent border-b-[24px] border-b-primary" />
             </div>
@@ -193,6 +214,9 @@ const QiblaPage = () => {
              'Barat Laut'}
             {' dari lokasi Anda'}
           </p>
+          {hasCompass && (
+            <p className="text-xs text-green-500 mt-1">Kompas aktif</p>
+          )}
         </div>
       </div>
 
@@ -222,10 +246,25 @@ const QiblaPage = () => {
           </div>
         </div>
 
-        {!hasCompass && (
+        {needsPermission && (
+          <button
+            onClick={requestCompassPermission}
+            className="w-full p-4 rounded-xl bg-primary/10 border border-primary/30 flex items-center gap-3 hover:bg-primary/20 transition-colors"
+          >
+            <div className="w-10 h-10 rounded-lg bg-primary/20 flex items-center justify-center shrink-0">
+              <Compass className="w-5 h-5 text-primary" />
+            </div>
+            <div className="text-left">
+              <p className="text-sm font-semibold text-foreground">Aktifkan Kompas</p>
+              <p className="text-xs text-muted-foreground">Ketuk untuk menggunakan kompas perangkat</p>
+            </div>
+          </button>
+        )}
+
+        {!hasCompass && !needsPermission && (
           <div className="p-4 rounded-xl bg-muted/50 border border-border">
             <p className="text-xs text-muted-foreground text-center">
-              Kompas perangkat tidak tersedia. Gunakan arah {Math.round(qiblaDirection)}° sebagai panduan.
+              Sensor kompas tidak tersedia di perangkat ini. Gunakan arah <strong>{Math.round(qiblaDirection)}°</strong> dari Utara sebagai panduan.
             </p>
           </div>
         )}
