@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { BookOpen, Clock, Hand, Target, Download, Wifi, WifiOff, BookmarkCheck, ChevronRight, Compass, TextSearch, CalendarDays, Coins, Moon } from 'lucide-react';
+import { BookOpen, Clock, Hand, Target, Download, Wifi, WifiOff, BookmarkCheck, ChevronRight, CalendarDays, Coins, Moon } from 'lucide-react';
 import { getSurahs, isSynced, syncAllData } from '@/lib/api';
 import { db } from '@/lib/db';
 import type { Bookmark, Surah } from '@/lib/db';
@@ -40,13 +40,14 @@ function findSurahFromGlobal(globalAyat: number): { surah: number; ayat: number 
 
 const HomePage = () => {
   const navigate = useNavigate();
-  const { isOnline, isSynced: synced, setSynced, syncProgress, setSyncProgress } = useAppStore();
+  const { isOnline, isSynced: synced, setSynced, syncProgress, setSyncProgress, isDarkMode, setDarkMode } = useAppStore();
   const [syncing, setSyncing] = useState(false);
   const [surahCount, setSurahCount] = useState(0);
   const [lastRead, setLastRead] = useState<Bookmark | null>(null);
   const [bookmarks, setBookmarks] = useState<Bookmark[]>([]);
   const [khatamProgress, setKhatamProgress] = useState<number>(0);
   const [khatamJuz, setKhatamJuz] = useState<string>('');
+  const [loading, setLoading] = useState<boolean>(true);
 
   useEffect(() => {
     isSynced().then(setSynced);
@@ -55,23 +56,33 @@ const HomePage = () => {
   }, [setSynced]);
 
   const loadData = async () => {
-    // Last read
-    const lr = await db.bookmarks.where('isLastRead').equals(1).first();
-    setLastRead(lr || null);
+    setLoading(true);
+    try {
+      // Last read
+      const lr = await db.bookmarks.where('isLastRead').equals(1).first();
+      setLastRead(lr || null);
 
-    // Calculate khatam progress from last read
-    if (lr) {
-      const globalAyat = calculateGlobalAyat(lr.surahNomor, lr.nomorAyat);
-      const pct = Math.round((globalAyat / TOTAL_AYAT) * 100 * 10) / 10;
-      setKhatamProgress(pct);
-      // Estimate juz (roughly 1 juz = ~20 pages ≈ TOTAL_AYAT/30)
-      const juz = Math.ceil(globalAyat / (TOTAL_AYAT / 30));
-      setKhatamJuz(`Juz ${Math.min(juz, 30)}`);
+      // Calculate khatam progress from last read
+      if (lr) {
+        const globalAyat = calculateGlobalAyat(lr.surahNomor, lr.nomorAyat);
+        const pct = Math.round((globalAyat / TOTAL_AYAT) * 100 * 10) / 10;
+        setKhatamProgress(pct);
+        // Estimate juz (roughly 1 juz = ~20 pages ≈ TOTAL_AYAT/30)
+        const juz = Math.ceil(globalAyat / (TOTAL_AYAT / 30));
+        setKhatamJuz(`Juz ${Math.min(juz, 30)}`);
+      } else {
+        setKhatamProgress(0);
+        setKhatamJuz('Juz 1');
+      }
+
+      // Bookmarks
+      const bmarks = await db.bookmarks.filter((b) => !b.isLastRead).reverse().sortBy('createdAt');
+      setBookmarks(bmarks.slice(0, 5));
+    } catch (err) {
+      console.error('loadData error:', err);
+    } finally {
+      setLoading(false);
     }
-
-    // Bookmarks
-    const bmarks = await db.bookmarks.filter(b => !b.isLastRead).reverse().sortBy('createdAt');
-    setBookmarks(bmarks.slice(0, 5));
   };
 
   const handleSync = async () => {
@@ -87,164 +98,260 @@ const HomePage = () => {
 
   const menuItems = [
     { icon: BookOpen, label: "Al-Qur'an", desc: '114 Surah', path: '/quran', color: 'bg-primary' },
-    { icon: Clock, label: 'Jadwal Shalat', desc: 'Berdasarkan lokasi', path: '/prayer-times', color: 'bg-accent' },
+    { icon: Clock, label: 'Jadwal Shalat', desc: 'Berdasarkan lokasi & Kiblat', path: '/prayer-times', color: 'bg-accent' },
     { icon: Hand, label: 'Dzikir Counter', desc: 'Tasbih digital', path: '/dzikir', color: 'bg-primary' },
     { icon: Target, label: 'Target Khatam', desc: 'Rencana bacaan', path: '/khatam', color: 'bg-accent' },
-    { icon: TextSearch, label: 'Cari Ayat', desc: 'Pencarian full-text', path: '/search', color: 'bg-primary' },
-    { icon: Compass, label: 'Arah Kiblat', desc: 'Kompas digital', path: '/qibla', color: 'bg-accent' },
     { icon: CalendarDays, label: 'Kalender Hijriyah', desc: 'Hari penting Islam', path: '/hijriah', color: 'bg-primary' },
     { icon: Coins, label: 'Kalkulator Zakat', desc: 'Maal & Fitrah', path: '/zakat', color: 'bg-accent' },
     { icon: Moon, label: 'Jadwal Shaum', desc: 'Puasa & alarm sahur', path: '/fasting', color: 'bg-primary' },
   ];
 
-  return (
-    <div className="min-h-screen pb-20 px-4 pt-6">
-      {/* Header */}
-      <div className="mb-6">
-        <div className="flex items-center justify-between mb-1">
-          <h1 className="text-2xl font-bold text-foreground">بِسْمِ ٱللَّٰهِ</h1>
-          <div className="flex items-center gap-1 text-xs text-muted-foreground">
-            {isOnline ? <Wifi className="w-3.5 h-3.5 text-primary" /> : <WifiOff className="w-3.5 h-3.5 text-destructive" />}
-            {isOnline ? 'Online' : 'Offline'}
+  const renderKhatamSection = () => {
+    if (loading) {
+      return (
+        <div className="mb-4 space-y-2">
+          <div className="h-24 animate-pulse rounded-xl border border-border bg-muted" />
+          <div className="h-12 animate-pulse rounded-xl border border-border bg-muted" />
+        </div>
+      );
+    }
+
+    if (!lastRead) {
+      return null;
+    }
+
+    return (
+      <section className="mb-4 overflow-hidden rounded-xl border border-border bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md dark:border-slate-800 dark:bg-slate-900">
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="inline-flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
+              <Target className="h-5 w-5" />
+            </div>
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Progres Khatam</p>
+              <p className="text-lg font-bold text-foreground">{khatamProgress}% selesai</p>
+            </div>
+          </div>
+          <span className="rounded-full bg-accent/15 px-3 py-1 text-xs font-semibold text-accent">{khatamJuz}</span>
+        </div>
+
+        <div className="mt-4 h-2.5 overflow-hidden rounded-full bg-muted">
+          <div className="h-full rounded-full bg-gradient-to-r from-primary to-accent transition-all" style={{ width: `${Math.min(khatamProgress, 100)}%` }} />
+        </div>
+
+        <button
+          onClick={() => navigate(`/quran/${lastRead.surahNomor}`)}
+          className="mt-4 w-full flex items-center gap-3 rounded-lg border border-border bg-card px-3 py-2 text-left transition hover:border-primary hover:bg-primary/10 dark:bg-slate-950"
+        >
+          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10 text-primary">
+            <BookOpen className="h-4 w-4" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Terakhir dibaca</p>
+            <p className="text-sm font-semibold text-foreground truncate">{lastRead.surahNamaLatin} — Ayat {lastRead.nomorAyat}</p>
+          </div>
+          <ChevronRight className="h-4 w-4 text-muted-foreground" />
+        </button>
+
+        <div className="mt-4 grid grid-cols-3 text-center text-[11px] text-muted-foreground">
+          <div>
+            <p className="font-semibold text-foreground">{calculateGlobalAyat(lastRead.surahNomor, lastRead.nomorAyat)}</p>
+            Ayat dibaca
+          </div>
+          <div className="border-l border-r border-border px-2 dark:border-slate-800">
+            <p className="font-semibold text-foreground">{TOTAL_AYAT - calculateGlobalAyat(lastRead.surahNomor, lastRead.nomorAyat)}</p>
+            Ayat tersisa
+          </div>
+          <div>
+            <p className="font-semibold text-foreground">{lastRead.surahNomor}/114</p>
+            Surah
           </div>
         </div>
-        <p className="text-sm text-muted-foreground">Aplikasi Al-Qur'an & Ibadah Harian</p>
+      </section>
+    );
+  };
+
+  const renderBookmarksSection = () => {
+    if (loading) {
+      return (
+        <div className="mt-6 space-y-2">
+          <div className="h-14 animate-pulse rounded-xl border border-border bg-muted" />
+          <div className="h-14 animate-pulse rounded-xl border border-border bg-muted" />
+        </div>
+      );
+    }
+
+    if (bookmarks.length === 0) {
+      return null;
+    }
+
+    return (
+      <div className="mt-6">
+        <div className="flex items-center gap-2 mb-3">
+          <BookmarkCheck className="w-4 h-4 text-accent" />
+          <h2 className="text-sm font-semibold text-foreground">Ayat Ditandai</h2>
+        </div>
+        <div className="space-y-2">
+          {bookmarks.map((b) => (
+            <button
+              key={b.id}
+              onClick={() => navigate(`/quran/${b.surahNomor}`)}
+              className="w-full flex items-center gap-3 p-3 rounded-xl bg-card border border-border transition-all active:scale-[0.98] hover:shadow-sm"
+            >
+              <div className="w-8 h-8 rounded-lg bg-accent/10 flex items-center justify-center flex-shrink-0">
+                <span className="text-xs font-bold text-accent">{b.nomorAyat}</span>
+              </div>
+              <div className="flex-1 text-left min-w-0">
+                <p className="text-sm font-medium text-foreground truncate">{b.surahNamaLatin}</p>
+                <p className="text-xs text-muted-foreground">Ayat {b.nomorAyat}</p>
+              </div>
+              <p className="font-arabic text-base text-primary flex-shrink-0">{b.surahNama}</p>
+            </button>
+          ))}
+        </div>
+      </div>
+    );
+  };
+
+
+  return (
+    <div className="min-h-screen pb-24 pt-6 bg-gradient-to-br from-slate-50 via-white to-slate-100 dark:from-slate-950 dark:via-slate-900 dark:to-slate-800 transition-colors duration-500">
+      <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
+        {/* Header */}
+        <div className="mb-8 text-center">
+          <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-gradient-to-r from-primary to-accent mb-4 shadow-lg animate-pulse">
+            <span className="text-2xl">🕌</span>
+          </div>
+          <h1 className="text-3xl font-bold text-foreground mb-2 bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">بِسْمِ ٱللَّٰهِ</h1>
+          <p className="text-sm text-muted-foreground">Aplikasi Al-Qur'an & Ibadah Harian</p>
+          <div className="flex items-center justify-center gap-2 mt-4">
+            <button
+              onClick={() => setDarkMode(!isDarkMode)}
+              className="rounded-full border border-border/80 px-3 py-1.5 text-xs font-semibold transition-all hover:border-primary hover:scale-105 shadow-sm"
+              aria-label="Toggle dark mode"
+            >
+              {isDarkMode ? '☀️ Light' : '🌙 Dark'}
+            </button>
+            <div className="flex items-center gap-1 text-xs text-muted-foreground">
+              {isOnline ? <Wifi className="w-3.5 h-3.5 text-primary" /> : <WifiOff className="w-3.5 h-3.5 text-destructive" />}
+              {isOnline ? 'Online' : 'Offline'}
+            </div>
+          </div>
+        </div>
+
+      {/* Quick Actions */}
+      <div className="mb-5 grid grid-cols-3 gap-2">
+        <button
+          onClick={() => lastRead ? navigate(`/quran/${lastRead.surahNomor}`) : navigate('/quran')}
+          className="rounded-xl border border-border bg-white p-3 text-center text-xs font-semibold text-foreground hover:bg-primary/5 dark:bg-slate-900 dark:hover:bg-primary/10"
+        >
+          <p>↻ Lanjut Baca</p>
+          <span className="text-muted-foreground">{lastRead ? `${lastRead.surahNamaLatin} Ayat ${lastRead.nomorAyat}` : 'Mulai membaca'}</span>
+        </button>
+        <button
+          onClick={() => navigate('/search')}
+          className="rounded-xl border border-border bg-white p-3 text-center text-xs font-semibold text-foreground hover:bg-primary/5 dark:bg-slate-900 dark:hover:bg-primary/10"
+        >
+          <p>🔎 Cari Ayat</p>
+          <span className="text-muted-foreground">Cepat & mudah</span>
+        </button>
+        <button
+          onClick={() => navigate('/khatam')}
+          className="rounded-xl border border-border bg-white p-3 text-center text-xs font-semibold text-foreground hover:bg-primary/5 dark:bg-slate-900 dark:hover:bg-primary/10"
+        >
+          <p>🎯 Target Khatam</p>
+          <span className="text-muted-foreground">Rencanakan harian</span>
+        </button>
       </div>
 
       {/* Sync Banner */}
       {!synced && (
-        <button
-          onClick={handleSync}
-          disabled={syncing || !isOnline}
-          className="w-full mb-6 p-4 rounded-xl bg-primary/10 border border-primary/20 flex items-center gap-3 transition-all active:scale-[0.98]"
-        >
-          <Download className={`w-5 h-5 text-primary ${syncing ? 'animate-bounce' : ''}`} />
-          <div className="flex-1 text-left">
-            <p className="text-sm font-semibold text-foreground">
-              {syncing ? `Mengunduh data... ${syncProgress}%` : 'Unduh Data Offline'}
-            </p>
-            <p className="text-xs text-muted-foreground">
-              {syncing ? 'Mohon tunggu, jangan tutup aplikasi' : `${surahCount}/114 surah tersedia`}
-            </p>
+        <div aria-live="polite" className="mb-6 rounded-xl border border-primary/25 bg-gradient-to-r from-primary/5 via-white to-accent/5 p-4 shadow-sm dark:from-slate-800 dark:via-slate-900 dark:to-slate-800">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="text-xs font-semibold uppercase text-primary">Sinkronisasi Offline</p>
+              <p className="text-sm text-foreground">Data belum lengkap. Simpan semua surah & ayat untuk bekerja offline.</p>
+            </div>
+            <span className={`text-xs rounded-full px-2 py-1 font-medium ${isOnline ? 'bg-success/15 text-success' : 'bg-destructive/15 text-destructive'}`}>
+              {isOnline ? 'Online' : 'Offline'}
+            </span>
+          </div>
+          <div className="mt-3 flex items-center justify-between">
+            <p className="text-xs text-muted-foreground">{surahCount}/114 surah tersedia</p>
+            <button
+              onClick={handleSync}
+              disabled={syncing || !isOnline}
+              className="inline-flex items-center gap-2 rounded-lg bg-primary px-3 py-2 text-xs font-semibold text-white transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <Download className={`w-4 h-4 ${syncing ? 'animate-spin' : ''}`} />
+              {syncing ? `${syncProgress}%` : 'Sync Sekarang'}
+            </button>
           </div>
           {syncing && (
-            <div className="w-10 h-10 relative">
-              <svg className="w-10 h-10 -rotate-90" viewBox="0 0 36 36">
-                <circle cx="18" cy="18" r="15" fill="none" className="stroke-muted" strokeWidth="3" />
-                <circle cx="18" cy="18" r="15" fill="none" className="stroke-primary" strokeWidth="3" strokeDasharray={`${syncProgress} 100`} strokeLinecap="round" />
-              </svg>
+            <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-muted">
+              <div className="h-full rounded-full bg-gradient-to-r from-primary to-accent transition-all" style={{ width: `${Math.min(syncProgress, 100)}%` }} />
             </div>
           )}
-        </button>
-      )}
-
-      {/* Khatam Progress Card */}
-      {lastRead && (
-        <div className="mb-4 p-4 rounded-xl bg-gradient-to-br from-primary/10 via-accent/5 to-primary/10 border border-primary/15 animate-fade-in">
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-lg bg-primary/15 flex items-center justify-center">
-                <Target className="w-4 h-4 text-primary" />
-              </div>
-              <div>
-                <p className="text-xs text-muted-foreground">Progres Khatam Al-Qur'an</p>
-                <p className="text-lg font-bold text-foreground">{khatamProgress}%</p>
-              </div>
-            </div>
-            <span className="text-xs font-medium text-accent bg-accent/10 px-2 py-1 rounded-full">{khatamJuz}</span>
-          </div>
-
-          {/* Progress bar */}
-          <div className="h-2.5 rounded-full bg-muted overflow-hidden mb-3">
-            <div
-              className="h-full rounded-full bg-gradient-to-r from-primary to-accent transition-all duration-700"
-              style={{ width: `${Math.min(khatamProgress, 100)}%` }}
-            />
-          </div>
-
-          {/* Last read info */}
-          <button
-            onClick={() => navigate(`/quran/${lastRead.surahNomor}`)}
-            className="w-full flex items-center gap-3 p-2.5 rounded-lg bg-card/60 border border-border/50 transition-all active:scale-[0.98]"
-          >
-            <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
-              <BookOpen className="w-4 h-4 text-primary" />
-            </div>
-            <div className="flex-1 text-left min-w-0">
-              <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Terakhir Dibaca</p>
-              <p className="text-sm font-semibold text-foreground truncate">
-                {lastRead.surahNamaLatin} — Ayat {lastRead.nomorAyat}
-              </p>
-            </div>
-            <ChevronRight className="w-4 h-4 text-muted-foreground flex-shrink-0" />
-          </button>
-
-          {/* Stats row */}
-          <div className="flex items-center justify-between mt-3 px-1">
-            <div className="text-center">
-              <p className="text-xs font-bold text-foreground">{calculateGlobalAyat(lastRead.surahNomor, lastRead.nomorAyat)}</p>
-              <p className="text-[10px] text-muted-foreground">Ayat dibaca</p>
-            </div>
-            <div className="h-4 w-px bg-border" />
-            <div className="text-center">
-              <p className="text-xs font-bold text-foreground">{TOTAL_AYAT - calculateGlobalAyat(lastRead.surahNomor, lastRead.nomorAyat)}</p>
-              <p className="text-[10px] text-muted-foreground">Ayat tersisa</p>
-            </div>
-            <div className="h-4 w-px bg-border" />
-            <div className="text-center">
-              <p className="text-xs font-bold text-foreground">{lastRead.surahNomor}/114</p>
-              <p className="text-[10px] text-muted-foreground">Surah</p>
-            </div>
-          </div>
         </div>
       )}
 
+      {renderKhatamSection()}
+
+      {/* Stats Overview */}
+      <div className="mb-6 grid grid-cols-2 sm:grid-cols-4 gap-4">
+        <div className="bg-white/60 dark:bg-slate-900/60 backdrop-blur-sm rounded-xl p-4 text-center border border-border/30">
+          <div className="text-2xl font-bold text-primary mb-1">{surahCount}</div>
+          <div className="text-xs text-muted-foreground">Surah Tersedia</div>
+        </div>
+        <div className="bg-white/60 dark:bg-slate-900/60 backdrop-blur-sm rounded-xl p-4 text-center border border-border/30">
+          <div className="text-2xl font-bold text-accent mb-1">{bookmarks.length}</div>
+          <div className="text-xs text-muted-foreground">Ayat Ditandai</div>
+        </div>
+        <div className="bg-white/60 dark:bg-slate-900/60 backdrop-blur-sm rounded-xl p-4 text-center border border-border/30">
+          <div className="text-2xl font-bold text-primary mb-1">{khatamProgress}%</div>
+          <div className="text-xs text-muted-foreground">Progres Khatam</div>
+        </div>
+        <div className="bg-white/60 dark:bg-slate-900/60 backdrop-blur-sm rounded-xl p-4 text-center border border-border/30">
+          <div className="text-2xl font-bold text-accent mb-1">{isOnline ? '🟢' : '🔴'}</div>
+          <div className="text-xs text-muted-foreground">Status Koneksi</div>
+        </div>
+      </div>
+
       {/* Menu Grid */}
-      <div className="grid grid-cols-2 gap-3">
-        {menuItems.map((item) => (
+      <div className="mb-6 flex items-center justify-between">
+        <div>
+          <h2 className="text-lg font-semibold text-foreground">Akses Cepat</h2>
+          <p className="text-xs text-muted-foreground">Pilih aktivitas ibadah Anda</p>
+        </div>
+        <div className="text-right">
+          <p className="text-xs text-muted-foreground">{menuItems.length} fitur tersedia</p>
+        </div>
+      </div>
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
+        {menuItems.map((item, index) => (
           <button
             key={item.path}
             onClick={() => navigate(item.path)}
-            className="p-4 rounded-xl bg-card border border-border text-left transition-all active:scale-[0.97] hover:shadow-md animate-fade-in"
+            className="group relative flex flex-col gap-3 rounded-2xl border border-border/50 bg-white/80 backdrop-blur-sm px-5 py-4 text-center transition-all duration-300 hover:-translate-y-1 hover:shadow-xl hover:border-primary/30 dark:bg-slate-900/80 dark:hover:bg-slate-800/90 overflow-hidden"
+            style={{ animationDelay: `${index * 100}ms` }}
           >
-            <div className={`w-10 h-10 rounded-lg ${item.color} flex items-center justify-center mb-3`}>
-              <item.icon className="w-5 h-5 text-primary-foreground" />
+            <div className="absolute inset-0 bg-gradient-to-br from-primary/5 to-accent/5 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+            <div className={`relative w-12 h-12 rounded-xl ${item.color} flex items-center justify-center transition-all group-hover:scale-110 group-hover:rotate-3 shadow-sm`}>
+              <item.icon className="w-6 h-6 text-primary-foreground" />
             </div>
-            <p className="text-sm font-semibold text-foreground">{item.label}</p>
-            <p className="text-xs text-muted-foreground mt-0.5">{item.desc}</p>
+            <div className="relative">
+              <p className="text-sm font-semibold text-foreground group-hover:text-primary transition-colors">{item.label}</p>
+              <p className="text-xs text-muted-foreground mt-1 leading-tight">{item.desc}</p>
+            </div>
           </button>
         ))}
       </div>
 
-      {/* Bookmarks Section */}
-      {bookmarks.length > 0 && (
-        <div className="mt-6">
-          <div className="flex items-center gap-2 mb-3">
-            <BookmarkCheck className="w-4 h-4 text-accent" />
-            <h2 className="text-sm font-semibold text-foreground">Ayat Ditandai</h2>
-          </div>
-          <div className="space-y-2">
-            {bookmarks.map((b) => (
-              <button
-                key={b.id}
-                onClick={() => navigate(`/quran/${b.surahNomor}`)}
-                className="w-full flex items-center gap-3 p-3 rounded-xl bg-card border border-border transition-all active:scale-[0.98] hover:shadow-sm"
-              >
-                <div className="w-8 h-8 rounded-lg bg-accent/10 flex items-center justify-center flex-shrink-0">
-                  <span className="text-xs font-bold text-accent">{b.nomorAyat}</span>
-                </div>
-                <div className="flex-1 text-left min-w-0">
-                  <p className="text-sm font-medium text-foreground truncate">{b.surahNamaLatin}</p>
-                  <p className="text-xs text-muted-foreground">Ayat {b.nomorAyat}</p>
-                </div>
-                <p className="font-arabic text-base text-primary flex-shrink-0">{b.surahNama}</p>
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
+      {renderBookmarksSection()}
     </div>
-  );
+  </div>
+);
+
 };
 
 export default HomePage;

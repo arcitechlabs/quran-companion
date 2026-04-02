@@ -1,25 +1,26 @@
+import React, { Suspense, useEffect } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Route, Routes } from "react-router-dom";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import BottomNav from "@/components/BottomNav";
 import AudioPlayer from "@/components/AudioPlayer";
-import HomePage from "./pages/HomePage";
-import QuranPage from "./pages/QuranPage";
-import SurahDetailPage from "./pages/SurahDetailPage";
-import JuzDetailPage from "./pages/JuzDetailPage";
-import PrayerTimesPage from "./pages/PrayerTimesPage";
-import DzikirPage from "./pages/DzikirPage";
-import KhatamPage from "./pages/KhatamPage";
-import DoaPage from "./pages/DoaPage";
-import SearchPage from "./pages/SearchPage";
-import QiblaPage from "./pages/QiblaPage";
-import HijriahCalendarPage from "./pages/HijriahCalendarPage";
-import ZakatPage from "./pages/ZakatPage";
-import FastingPage from "./pages/FastingPage";
-import NotFound from "./pages/NotFound";
-import { useEffect } from "react";
 import { useAppStore } from "./stores/appStore";
+
+const HomePage = React.lazy(() => import("./pages/HomePage"));
+const QuranPage = React.lazy(() => import("./pages/QuranPage"));
+const SurahDetailPage = React.lazy(() => import("./pages/SurahDetailPage"));
+const JuzDetailPage = React.lazy(() => import("./pages/JuzDetailPage"));
+const PrayerTimesPage = React.lazy(() => import("./pages/PrayerTimesPage"));
+const DzikirPage = React.lazy(() => import("./pages/DzikirPage"));
+const KhatamPage = React.lazy(() => import("./pages/KhatamPage"));
+const DoaPage = React.lazy(() => import("./pages/DoaPage"));
+const SearchPage = React.lazy(() => import("./pages/SearchPage"));
+const QiblaPage = React.lazy(() => import("./pages/QiblaPage"));
+const HijriahCalendarPage = React.lazy(() => import("./pages/HijriahCalendarPage"));
+const ZakatPage = React.lazy(() => import("./pages/ZakatPage"));
+const FastingPage = React.lazy(() => import("./pages/FastingPage"));
+const NotFound = React.lazy(() => import("./pages/NotFound"));
 
 const queryClient = new QueryClient();
 
@@ -46,25 +47,29 @@ const AppContent = () => {
   }, [setOnline]);
 
   return (
-    <div className="max-w-lg mx-auto min-h-screen relative">
-      <Routes>
-        <Route path="/" element={<HomePage />} />
-        <Route path="/quran" element={<QuranPage />} />
-        <Route path="/quran/:id" element={<SurahDetailPage />} />
-        <Route path="/juz/:id" element={<JuzDetailPage />} />
-        <Route path="/search" element={<SearchPage />} />
-        <Route path="/qibla" element={<QiblaPage />} />
-        <Route path="/hijriah" element={<HijriahCalendarPage />} />
-        <Route path="/zakat" element={<ZakatPage />} />
-        <Route path="/fasting" element={<FastingPage />} />
-        <Route path="/prayer-times" element={<PrayerTimesPage />} />
-        <Route path="/dzikir" element={<DzikirPage />} />
-        <Route path="/khatam" element={<KhatamPage />} />
-        <Route path="/doa" element={<DoaPage />} />
-        <Route path="*" element={<NotFound />} />
-      </Routes>
-      <AudioPlayer />
-      <BottomNav />
+    <div className="max-w-full mx-auto min-h-screen relative bg-background text-foreground lg:max-w-5xl">
+      <div className="px-4 sm:px-6 lg:px-8">
+        <Suspense fallback={<div className="py-20 text-center text-sm text-muted-foreground">Memuat konten...</div>}>
+          <Routes>
+            <Route path="/" element={<HomePage />} />
+            <Route path="/quran" element={<QuranPage />} />
+            <Route path="/quran/:id" element={<SurahDetailPage />} />
+            <Route path="/juz/:id" element={<JuzDetailPage />} />
+            <Route path="/search" element={<SearchPage />} />
+            <Route path="/qibla" element={<QiblaPage />} />
+            <Route path="/hijriah" element={<HijriahCalendarPage />} />
+            <Route path="/zakat" element={<ZakatPage />} />
+            <Route path="/fasting" element={<FastingPage />} />
+            <Route path="/prayer-times" element={<PrayerTimesPage />} />
+            <Route path="/dzikir" element={<DzikirPage />} />
+            <Route path="/khatam" element={<KhatamPage />} />
+            <Route path="/doa" element={<DoaPage />} />
+            <Route path="*" element={<NotFound />} />
+          </Routes>
+        </Suspense>
+        <AudioPlayer />
+        <BottomNav />
+      </div>
     </div>
   );
 };

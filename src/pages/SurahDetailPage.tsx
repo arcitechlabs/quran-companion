@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, BookOpen, List, ChevronLeft, ChevronRight, Bookmark, BookmarkCheck, Play, Pause, Palette } from 'lucide-react';
+import { ArrowLeft, BookOpen, List, ChevronLeft, ChevronRight, Bookmark, BookmarkCheck, Play, Pause, Palette, ChevronUp, ChevronDown } from 'lucide-react';
 import { getVerses } from '@/lib/api';
 import { db } from '@/lib/db';
 import type { Surah, Verse, Bookmark as BookmarkType } from '@/lib/db';
@@ -187,6 +187,35 @@ const SurahDetailPage = () => {
         <TajweedView surah={surah} verses={verses} bookmarkedAyats={bookmarkedAyats} onBookmark={handleBookmark} playingAyat={currentSurah === surah?.nomor ? currentAyat : null} onPlayAyat={handlePlayAyat} />
       ) : (
         <TerjemahView surah={surah} verses={verses} bookmarkedAyats={bookmarkedAyats} onBookmark={handleBookmark} playingAyat={currentSurah === surah?.nomor ? currentAyat : null} onPlayAyat={handlePlayAyat} />
+      )}
+
+      {/* Prev / Next Surah Navigation */}
+      {surah && (
+        <div className="flex items-center justify-between px-4 py-4 border-t border-border bg-card">
+          <button
+            onClick={() => { if (surah.nomor > 1) navigate(`/quran/${surah.nomor - 1}`); }}
+            disabled={surah.nomor <= 1}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-muted text-foreground text-sm font-medium transition-all active:scale-95 disabled:opacity-30 disabled:cursor-not-allowed"
+          >
+            <ChevronRight className="w-4 h-4" />
+            <div className="text-left">
+              <p className="text-[10px] text-muted-foreground">Sebelumnya</p>
+              <p className="text-xs font-semibold truncate max-w-[100px]">{surah.nomor > 1 ? `${surah.nomor - 1}. ...` : ''}</p>
+            </div>
+          </button>
+          <span className="text-xs text-muted-foreground font-medium">{surah.nomor}/114</span>
+          <button
+            onClick={() => { if (surah.nomor < 114) navigate(`/quran/${surah.nomor + 1}`); }}
+            disabled={surah.nomor >= 114}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-muted text-foreground text-sm font-medium transition-all active:scale-95 disabled:opacity-30 disabled:cursor-not-allowed"
+          >
+            <div className="text-right">
+              <p className="text-[10px] text-muted-foreground">Selanjutnya</p>
+              <p className="text-xs font-semibold truncate max-w-[100px]">{surah.nomor < 114 ? `... ${surah.nomor + 1}` : ''}</p>
+            </div>
+            <ChevronLeft className="w-4 h-4" />
+          </button>
+        </div>
       )}
     </div>
   );
@@ -416,77 +445,89 @@ function colorizeTajweed(text: string): React.ReactNode[] {
   return parts;
 }
 
-const TajweedView = ({ surah, verses, bookmarkedAyats, onBookmark, playingAyat, onPlayAyat }: ViewProps) => (
-  <>
-    {surah && surah.nomor !== 1 && surah.nomor !== 9 && (
-      <div className="text-center py-6 px-4">
-        <p className="font-arabic text-2xl text-primary leading-loose">
-          بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ
-        </p>
-      </div>
-    )}
+const TajweedView = ({ surah, verses, bookmarkedAyats, onBookmark, playingAyat, onPlayAyat }: ViewProps) => {
+  const [showLegend, setShowLegend] = useState(true);
 
-    {/* Legend */}
-    <div className="px-4 mb-4">
-      <div className="p-3 rounded-xl bg-card border border-border">
-        <p className="text-xs font-semibold text-foreground mb-2">Legenda Warna Tajweed</p>
-        <div className="flex flex-wrap gap-x-3 gap-y-1">
-          {[
-            { name: 'Tasydid', color: 'text-red-500' },
-            { name: 'Sukun', color: 'text-sky-500' },
-            { name: 'Mad', color: 'text-amber-500' },
-            { name: 'Tanwin', color: 'text-purple-500' },
-            { name: 'Qalqalah', color: 'text-orange-500' },
-            { name: 'Idgham', color: 'text-emerald-500' },
-            { name: 'Ikhfa', color: 'text-blue-500' },
-            { name: 'Ghunnah', color: 'text-red-400' },
-          ].map(r => (
-            <span key={r.name} className={`text-[10px] ${r.color} font-medium`}>● {r.name}</span>
-          ))}
+  return (
+    <>
+      {surah && surah.nomor !== 1 && surah.nomor !== 9 && (
+        <div className="text-center py-6 px-4">
+          <p className="font-arabic text-2xl text-primary leading-loose">
+            بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ
+          </p>
+        </div>
+      )}
+
+      {/* Legend - sticky with toggle */}
+      <div className="sticky top-[52px] z-30 px-4 mb-4">
+        <div className="p-3 rounded-xl bg-card border border-border shadow-sm">
+          <button
+            onClick={() => setShowLegend(!showLegend)}
+            className="w-full flex items-center justify-between"
+          >
+            <p className="text-xs font-semibold text-foreground">Legenda Warna Tajweed</p>
+            {showLegend ? <ChevronUp className="w-4 h-4 text-muted-foreground" /> : <ChevronDown className="w-4 h-4 text-muted-foreground" />}
+          </button>
+          {showLegend && (
+            <div className="flex flex-wrap gap-x-3 gap-y-1 mt-2 pt-2 border-t border-border">
+              {[
+                { name: 'Tasydid', color: 'text-red-500' },
+                { name: 'Sukun', color: 'text-sky-500' },
+                { name: 'Mad', color: 'text-amber-500' },
+                { name: 'Tanwin', color: 'text-purple-500' },
+                { name: 'Qalqalah', color: 'text-orange-500' },
+                { name: 'Idgham', color: 'text-emerald-500' },
+                { name: 'Ikhfa', color: 'text-blue-500' },
+                { name: 'Ghunnah', color: 'text-red-400' },
+              ].map(r => (
+                <span key={r.name} className={`text-[10px] ${r.color} font-medium`}>● {r.name}</span>
+              ))}
+            </div>
+          )}
         </div>
       </div>
-    </div>
 
-    <div className="px-4 space-y-4 py-4">
-      {verses.map((verse) => {
-        const isMarked = bookmarkedAyats.has(verse.nomorAyat);
-        const isPlayingThis = playingAyat === verse.nomorAyat;
-        return (
-          <div key={verse.nomorAyat} className={`p-4 rounded-xl bg-card border animate-fade-in ${isMarked ? 'border-accent shadow-sm' : 'border-border'} ${isPlayingThis ? 'ring-2 ring-primary/40' : ''}`}>
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-2">
-                <div className="w-7 h-7 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
-                  <span className="text-xs font-bold text-primary">{verse.nomorAyat}</span>
+      <div className="px-4 space-y-4 py-4">
+        {verses.map((verse) => {
+          const isMarked = bookmarkedAyats.has(verse.nomorAyat);
+          const isPlayingThis = playingAyat === verse.nomorAyat;
+          return (
+            <div key={verse.nomorAyat} className={`p-4 rounded-xl bg-card border animate-fade-in ${isMarked ? 'border-accent shadow-sm' : 'border-border'} ${isPlayingThis ? 'ring-2 ring-primary/40' : ''}`}>
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <div className="w-7 h-7 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
+                    <span className="text-xs font-bold text-primary">{verse.nomorAyat}</span>
+                  </div>
+                  {verse.audio && (
+                    <button
+                      onClick={() => onPlayAyat(verse.nomorAyat)}
+                      className={`w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 transition-colors ${
+                        isPlayingThis ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground hover:bg-primary/10 hover:text-primary'
+                      }`}
+                    >
+                      {isPlayingThis ? <Pause className="w-3 h-3" /> : <Play className="w-3 h-3 ml-0.5" />}
+                    </button>
+                  )}
                 </div>
-                {verse.audio && (
-                  <button
-                    onClick={() => onPlayAyat(verse.nomorAyat)}
-                    className={`w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 transition-colors ${
-                      isPlayingThis ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground hover:bg-primary/10 hover:text-primary'
-                    }`}
-                  >
-                    {isPlayingThis ? <Pause className="w-3 h-3" /> : <Play className="w-3 h-3 ml-0.5" />}
-                  </button>
-                )}
+                <button onClick={() => onBookmark(verse.nomorAyat)} className="p-1.5 rounded-lg hover:bg-muted transition-colors">
+                  {isMarked ? (
+                    <BookmarkCheck className="w-4.5 h-4.5 text-accent" />
+                  ) : (
+                    <Bookmark className="w-4.5 h-4.5 text-muted-foreground" />
+                  )}
+                </button>
               </div>
-              <button onClick={() => onBookmark(verse.nomorAyat)} className="p-1.5 rounded-lg hover:bg-muted transition-colors">
-                {isMarked ? (
-                  <BookmarkCheck className="w-4.5 h-4.5 text-accent" />
-                ) : (
-                  <Bookmark className="w-4.5 h-4.5 text-muted-foreground" />
-                )}
-              </button>
+              <p className="font-arabic text-right text-xl leading-[2.5] text-foreground mb-4" dir="rtl">
+                {colorizeTajweed(verse.teksArab)}
+              </p>
+              <p className="text-sm text-primary/80 italic mb-2">{verse.teksLatin}</p>
+              <p className="text-sm text-muted-foreground">{verse.teksIndonesia}</p>
             </div>
-            <p className="font-arabic text-right text-xl leading-[2.5] text-foreground mb-4" dir="rtl">
-              {colorizeTajweed(verse.teksArab)}
-            </p>
-            <p className="text-sm text-primary/80 italic mb-2">{verse.teksLatin}</p>
-            <p className="text-sm text-muted-foreground">{verse.teksIndonesia}</p>
-          </div>
-        );
-      })}
-    </div>
-  </>
-);
+          );
+        })}
+      </div>
+    </>
+  );
+};
 
 export default SurahDetailPage;

@@ -1,7 +1,17 @@
 import { useEffect, useState } from 'react';
-import { MapPin, Loader2, Bell, BellOff } from 'lucide-react';
+import { MapPin, Loader2, Bell, BellOff, Settings, Volume2, VolumeX, Play, Check } from 'lucide-react';
 import { fetchPrayerTimes } from '@/lib/api';
-import { requestNotificationPermission, schedulePrayerNotifications, cancelPrayerNotifications, isNotificationEnabled } from '@/lib/notifications';
+import { 
+  requestNotificationPermission, 
+  schedulePrayerNotifications, 
+  cancelPrayerNotifications, 
+  isNotificationEnabled,
+  getNotificationSettings,
+  saveNotificationSettings,
+  testNotificationSound,
+  type NotificationSound,
+  type PrayerNotificationSettings
+} from '@/lib/notifications';
 import { useAppStore } from '@/stores/appStore';
 import { toast } from 'sonner';
 
@@ -11,6 +21,14 @@ interface PrayerTime {
   time: string;
 }
 
+const SOUND_OPTIONS: { value: NotificationSound; label: string; icon: typeof Volume2 }[] = [
+  { value: 'adzan', label: 'Adzan', icon: Volume2 },
+  { value: 'beep', label: 'Beep', icon: Play },
+  { value: 'silent', label: 'Diam', icon: VolumeX },
+];
+
+const NOTIFICATION_PRAYERS = ['Subuh', 'Dzuhur', 'Ashar', 'Maghrib', 'Isya'];
+
 const PrayerTimesPage = () => {
   const [times, setTimes] = useState<PrayerTime[]>([]);
   const [hijri, setHijri] = useState('');
@@ -19,6 +37,8 @@ const PrayerTimesPage = () => {
   const [locationName, setLocationName] = useState('');
   const { notificationsEnabled, setNotificationsEnabled } = useAppStore();
   const [notifLoading, setNotifLoading] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
+  const [settings, setSettings] = useState<PrayerNotificationSettings>(getNotificationSettings);
 
   useEffect(() => {
     const load = async () => {
@@ -50,8 +70,8 @@ const PrayerTimesPage = () => {
         const h = data.date.hijri;
         setHijri(`${h.day} ${h.month.ar} ${h.year}`);
 
-        // Restore notification state
         setNotificationsEnabled(isNotificationEnabled());
+        setSettings(getNotificationSettings());
       } catch (e) {
         setError('Gagal memuat jadwal shalat');
       }
@@ -73,7 +93,7 @@ const PrayerTimesPage = () => {
 
   const nextPrayer = getNextPrayer();
 
-  const handleToggleNotifications = async () => {
+  const handleToggleMaster = async () => {
     setNotifLoading(true);
     try {
       if (notificationsEnabled) {
@@ -87,16 +107,57 @@ const PrayerTimesPage = () => {
           setNotifLoading(false);
           return;
         }
-        const prayerTimes = times.filter(t => t.name !== 'Syuruq');
+        const prayerTimes = times.filter(t => NOTIFICATION_PRAYERS.includes(t.name));
         await schedulePrayerNotifications(prayerTimes);
         setNotificationsEnabled(true);
-        toast('Notifikasi shalat diaktifkan!', { duration: 2000 });
+        toast('Notifikasi珈 aktif!', { duration: 2000 });
       }
     } catch (e) {
       toast('Gagal mengatur notifikasi', { duration: 2000 });
     }
     setNotifLoading(false);
   };
+
+  const handleTogglePrayer = async (prayerName: string) => {
+    const newSettings = {
+      ...settings,
+      [prayerName]: {
+        ...settings[prayerName],
+        enabled: !settings[prayerName]?.enabled
+      }
+    };
+    setSettings(newSettings);
+    saveNotificationSettings(newSettings);
+
+    if (notificationsEnabled) {
+      const prayerTimes = times.filter(t => NOTIFICATION_PRAYERS.includes(t.name));
+      await schedulePrayerNotifications(prayerTimes);
+    }
+  };
+
+  const handleSoundChange = async (prayerName: string, sound: NotificationSound) => {
+    const newSettings = {
+      ...settings,
+      [prayerName]: {
+        ...settings[prayerName],
+        sound
+      }
+    };
+    setSettings(newSettings);
+    saveNotificationSettings(newSettings);
+
+    if (notificationsEnabled) {
+      const prayerTimes = times.filter(t => NOTIFICATION_PRAYERS.includes(t.name));
+      await schedulePrayerNotifications(prayerTimes);
+    }
+  };
+
+  const handleTestSound = (sound: NotificationSound) => {
+    testNotificationSound(sound);
+    toast(`Test bunyi ${sound}`, { duration: 1500 });
+  };
+
+  const enabledCount = Object.values(settings).filter(s => s.enabled).length;
 
   if (loading) {
     return (
@@ -118,30 +179,115 @@ const PrayerTimesPage = () => {
     <div className="min-h-screen pb-20 pt-6 px-4">
       <div className="flex items-center justify-between mb-1">
         <h1 className="text-xl font-bold text-foreground">Jadwal Shalat</h1>
-        <button
-          onClick={handleToggleNotifications}
-          disabled={notifLoading}
-          className={`p-2 rounded-lg transition-all active:scale-90 ${
-            notificationsEnabled
-              ? 'bg-primary/10 text-primary'
-              : 'bg-muted text-muted-foreground'
-          }`}
-        >
-          {notificationsEnabled ? <Bell className="w-5 h-5" /> : <BellOff className="w-5 h-5" />}
-        </button>
+        <div className="flex items-center gap-1">
+          <button
+            onClick={() => setShowSettings(!showSettings)}
+            className={`p-2 rounded-lg transition-all active:scale-90 ${
+              showSettings ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:text-foreground'
+            }`}
+            title="Pengaturan notifikasi"
+          >
+            <Settings className="w-5 h-5" />
+          </button>
+          <button
+            onClick={handleToggleMaster}
+            disabled={notifLoading}
+            className={`p-2 rounded-lg transition-all active:scale-90 ${
+              notificationsEnabled
+                ? 'bg-primary/10 text-primary'
+                : 'bg-muted text-muted-foreground'
+            }`}
+          >
+            {notificationsEnabled ? <Bell className="w-5 h-5" /> : <BellOff className="w-5 h-5" />}
+          </button>
+        </div>
       </div>
-      <div className="flex items-center gap-1.5 mb-6">
+      <div className="flex items-center gap-1.5 mb-4">
         <MapPin className="w-3.5 h-3.5 text-muted-foreground" />
         <p className="text-xs text-muted-foreground">{locationName}</p>
         {hijri && <span className="text-xs text-muted-foreground">• {hijri}</span>}
-        {notificationsEnabled && (
-          <span className="text-xs text-primary font-medium ml-1">• Notifikasi aktif</span>
-        )}
       </div>
 
+      {/* Settings Panel */}
+      {showSettings && (
+        <div className="mb-4 p-4 rounded-xl bg-card border border-border animate-fade-in">
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-sm font-semibold text-foreground">Pengaturan Notifikasi</p>
+            <span className="text-xs text-muted-foreground">
+              {enabledCount}/5 aktif
+            </span>
+          </div>
+
+          <div className="space-y-2 mb-4">
+            {NOTIFICATION_PRAYERS.map(prayer => {
+              const prayerTime = times.find(t => t.name === prayer);
+              const setting = settings[prayer] || { enabled: true, sound: 'adzan' as NotificationSound };
+              
+              return (
+                <div key={prayer} className="p-3 rounded-lg bg-background border border-border">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => handleTogglePrayer(prayer)}
+                        className={`w-5 h-5 rounded flex items-center justify-center transition-colors ${
+                          setting.enabled ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'
+                        }`}
+                      >
+                        {setting.enabled && <Check className="w-3 h-3" />}
+                      </button>
+                      <span className="text-sm font-medium text-foreground">{prayer}</span>
+                    </div>
+                    <span className="text-xs text-muted-foreground">{prayerTime?.time}</span>
+                  </div>
+                  
+                  {setting.enabled && (
+                    <div className="flex items-center gap-2 pl-7">
+                      {SOUND_OPTIONS.map(opt => (
+                        <button
+                          key={opt.value}
+                          onClick={() => handleSoundChange(prayer, opt.value)}
+                          className={`flex items-center gap-1 px-2 py-1 rounded text-xs transition-colors ${
+                            setting.sound === opt.value
+                              ? 'bg-primary/10 text-primary'
+                              : 'bg-muted text-muted-foreground hover:text-foreground'
+                          }`}
+                        >
+                          <opt.icon className="w-3 h-3" />
+                          {opt.label}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Test Sounds */}
+          <div className="pt-3 border-t border-border">
+            <p className="text-xs text-muted-foreground mb-2">Test bunyi notifikasi:</p>
+            <div className="flex gap-2">
+              {SOUND_OPTIONS.map(opt => (
+                <button
+                  key={opt.value}
+                  onClick={() => handleTestSound(opt.value)}
+                  className="flex-1 flex items-center justify-center gap-1 px-3 py-2 rounded-lg bg-muted text-xs text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  <opt.icon className="w-3 h-3" />
+                  Test {opt.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Prayer Times List */}
       <div className="space-y-2.5">
         {times.map((t) => {
           const isNext = t.name === nextPrayer;
+          const isNotificationOn = notificationsEnabled && settings[t.name]?.enabled;
+          
           return (
             <div
               key={t.name}
@@ -159,8 +305,15 @@ const PrayerTimesPage = () => {
                 </div>
               </div>
               <div className="flex items-center gap-2">
-                {notificationsEnabled && t.name !== 'Syuruq' && (
-                  <Bell className="w-3 h-3 text-primary/50" />
+                {isNotificationOn && (
+                  <span className={`text-[10px] px-1.5 py-0.5 rounded ${
+                    settings[t.name]?.sound === 'adzan' ? 'bg-primary/10 text-primary' :
+                    settings[t.name]?.sound === 'beep' ? 'bg-accent/10 text-accent' :
+                    'bg-muted text-muted-foreground'
+                  }`}>
+                    {settings[t.name]?.sound === 'adzan' ? 'Adzan' :
+                     settings[t.name]?.sound === 'beep' ? 'Beep' : 'Diam'}
+                  </span>
                 )}
                 <p className={`text-lg font-bold tabular-nums ${isNext ? 'text-primary' : 'text-foreground'}`}>
                   {t.time}

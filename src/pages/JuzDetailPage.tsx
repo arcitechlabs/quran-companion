@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Play, Pause, Bookmark, BookmarkCheck } from 'lucide-react';
+import { ArrowLeft, Play, Pause, Bookmark, BookmarkCheck, ChevronLeft, ChevronRight } from 'lucide-react';
 import { getJuzVerses } from '@/lib/api';
 import { db } from '@/lib/db';
 import type { Surah, Verse } from '@/lib/db';
@@ -225,6 +225,33 @@ const JuzDetailPage = () => {
             </div>
           </div>
         ))}
+      </div>
+
+      {/* Prev / Next Juz Navigation */}
+      <div className="flex items-center justify-between px-4 py-4 border-t border-border bg-card">
+        <button
+          onClick={() => { if (juzNumber > 1) navigate(`/juz/${juzNumber - 1}`); }}
+          disabled={juzNumber <= 1}
+          className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-muted text-foreground text-sm font-medium transition-all active:scale-95 disabled:opacity-30 disabled:cursor-not-allowed"
+        >
+          <ChevronRight className="w-4 h-4" />
+          <div className="text-left">
+            <p className="text-[10px] text-muted-foreground">Sebelumnya</p>
+            <p className="text-xs font-semibold">{juzNumber > 1 ? `Juz ${juzNumber - 1}` : ''}</p>
+          </div>
+        </button>
+        <span className="text-xs text-muted-foreground font-medium">{juzNumber}/30</span>
+        <button
+          onClick={() => { if (juzNumber < 30) navigate(`/juz/${juzNumber + 1}`); }}
+          disabled={juzNumber >= 30}
+          className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-muted text-foreground text-sm font-medium transition-all active:scale-95 disabled:opacity-30 disabled:cursor-not-allowed"
+        >
+          <div className="text-right">
+            <p className="text-[10px] text-muted-foreground">Selanjutnya</p>
+            <p className="text-xs font-semibold">{juzNumber < 30 ? `Juz ${juzNumber + 1}` : ''}</p>
+          </div>
+          <ChevronLeft className="w-4 h-4" />
+        </button>
       </div>
     </div>
   );
