@@ -1,0 +1,22 @@
+{
+  "name": "Al-Qur'an App",
+  "short_name": "Al-Qur'an",
+  "description": "Aplikasi Al-Qur'an lengkap dengan jadwal shalat, dzikir counter, dan target khatam",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f7f5f0",
+  "theme_color": "#1a7a5a",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
