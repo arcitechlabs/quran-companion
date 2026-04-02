@@ -9,6 +9,7 @@ import SurahDetailPage from "./pages/SurahDetailPage";
 import PrayerTimesPage from "./pages/PrayerTimesPage";
 import DzikirPage from "./pages/DzikirPage";
 import KhatamPage from "./pages/KhatamPage";
+import DoaPage from "./pages/DoaPage";
 import NotFound from "./pages/NotFound";
 import { useEffect } from "react";
 import { useAppStore } from "./stores/appStore";
