@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { BookOpen, Clock, Hand, Target, Download, Wifi, WifiOff } from 'lucide-react';
+import { BookOpen, Clock, Hand, Target, Download, Wifi, WifiOff, BookmarkCheck, ChevronRight } from 'lucide-react';
 import { getSurahs, isSynced, syncAllData } from '@/lib/api';
+import { db } from '@/lib/db';
+import type { Bookmark } from '@/lib/db';
 import { useAppStore } from '@/stores/appStore';
 
 const HomePage = () => {
@@ -9,10 +11,21 @@ const HomePage = () => {
   const { isOnline, isSynced: synced, setSynced, syncProgress, setSyncProgress } = useAppStore();
   const [syncing, setSyncing] = useState(false);
   const [surahCount, setSurahCount] = useState(0);
+  const [lastRead, setLastRead] = useState<Bookmark | null>(null);
+  const [bookmarks, setBookmarks] = useState<Bookmark[]>([]);
 
   useEffect(() => {
     isSynced().then(setSynced);
     getSurahs().then((s) => setSurahCount(s.length));
+
+    // Load last read & bookmarks
+    const loadBookmarks = async () => {
+      const lr = await db.bookmarks.where('isLastRead').equals(1).first();
+      setLastRead(lr || null);
+      const bmarks = await db.bookmarks.filter(b => !b.isLastRead).reverse().sortBy('createdAt');
+      setBookmarks(bmarks.slice(0, 5));
+    };
+    loadBookmarks();
   }, [setSynced]);
 
   const handleSync = async () => {
@@ -67,14 +80,29 @@ const HomePage = () => {
             <div className="w-10 h-10 relative">
               <svg className="w-10 h-10 -rotate-90" viewBox="0 0 36 36">
                 <circle cx="18" cy="18" r="15" fill="none" className="stroke-muted" strokeWidth="3" />
-                <circle
-                  cx="18" cy="18" r="15" fill="none" className="stroke-primary"
-                  strokeWidth="3" strokeDasharray={`${syncProgress} 100`}
-                  strokeLinecap="round"
-                />
+                <circle cx="18" cy="18" r="15" fill="none" className="stroke-primary" strokeWidth="3" strokeDasharray={`${syncProgress} 100`} strokeLinecap="round" />
               </svg>
             </div>
           )}
+        </button>
+      )}
+
+      {/* Last Read Card */}
+      {lastRead && (
+        <button
+          onClick={() => navigate(`/quran/${lastRead.surahNomor}`)}
+          className="w-full mb-6 p-4 rounded-xl bg-gradient-to-br from-primary/10 to-accent/10 border border-primary/10 flex items-center gap-3 transition-all active:scale-[0.98]"
+        >
+          <div className="w-10 h-10 rounded-lg bg-primary/15 flex items-center justify-center flex-shrink-0">
+            <BookOpen className="w-5 h-5 text-primary" />
+          </div>
+          <div className="flex-1 text-left">
+            <p className="text-xs text-muted-foreground">Lanjutkan Membaca</p>
+            <p className="text-sm font-semibold text-foreground">
+              {lastRead.surahNamaLatin} - Ayat {lastRead.nomorAyat}
+            </p>
+          </div>
+          <ChevronRight className="w-4 h-4 text-muted-foreground" />
         </button>
       )}
 
@@ -95,11 +123,31 @@ const HomePage = () => {
         ))}
       </div>
 
-      {/* Last Read */}
-      {synced && (
-        <div className="mt-6 p-4 rounded-xl bg-gradient-to-br from-primary/10 to-accent/10 border border-primary/10">
-          <p className="text-xs text-muted-foreground mb-1">Terakhir Dibaca</p>
-          <p className="text-sm font-semibold text-foreground">Al-Fatihah - Ayat 1</p>
+      {/* Bookmarks Section */}
+      {bookmarks.length > 0 && (
+        <div className="mt-6">
+          <div className="flex items-center gap-2 mb-3">
+            <BookmarkCheck className="w-4 h-4 text-accent" />
+            <h2 className="text-sm font-semibold text-foreground">Ayat Ditandai</h2>
+          </div>
+          <div className="space-y-2">
+            {bookmarks.map((b) => (
+              <button
+                key={b.id}
+                onClick={() => navigate(`/quran/${b.surahNomor}`)}
+                className="w-full flex items-center gap-3 p-3 rounded-xl bg-card border border-border transition-all active:scale-[0.98] hover:shadow-sm"
+              >
+                <div className="w-8 h-8 rounded-lg bg-accent/10 flex items-center justify-center flex-shrink-0">
+                  <span className="text-xs font-bold text-accent">{b.nomorAyat}</span>
+                </div>
+                <div className="flex-1 text-left min-w-0">
+                  <p className="text-sm font-medium text-foreground truncate">{b.surahNamaLatin}</p>
+                  <p className="text-xs text-muted-foreground">Ayat {b.nomorAyat}</p>
+                </div>
+                <p className="font-arabic text-base text-primary flex-shrink-0">{b.surahNama}</p>
+              </button>
+            ))}
+          </div>
         </div>
       )}
     </div>
