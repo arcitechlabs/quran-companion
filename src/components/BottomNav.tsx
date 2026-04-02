@@ -1,12 +1,12 @@
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Home, BookOpen, Clock, Hand, Target } from 'lucide-react';
+import { Home, BookOpen, Clock, Hand, BookHeart } from 'lucide-react';
 
 const tabs = [
   { id: 'home', icon: Home, label: 'Beranda', path: '/' },
   { id: 'quran', icon: BookOpen, label: "Al-Qur'an", path: '/quran' },
   { id: 'prayer', icon: Clock, label: 'Shalat', path: '/prayer-times' },
   { id: 'dzikir', icon: Hand, label: 'Dzikir', path: '/dzikir' },
-  { id: 'khatam', icon: Target, label: 'Khatam', path: '/khatam' },
+  { id: 'doa', icon: BookHeart, label: 'Doa', path: '/doa' },
 ];
 
 const BottomNav = () => {

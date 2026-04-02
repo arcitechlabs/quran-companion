@@ -47,6 +47,7 @@ const AppContent = () => {
         <Route path="/prayer-times" element={<PrayerTimesPage />} />
         <Route path="/dzikir" element={<DzikirPage />} />
         <Route path="/khatam" element={<KhatamPage />} />
+        <Route path="/doa" element={<DoaPage />} />
         <Route path="*" element={<NotFound />} />
       </Routes>
       <BottomNav />
