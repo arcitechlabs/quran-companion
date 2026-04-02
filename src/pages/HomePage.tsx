@@ -3,8 +3,40 @@ import { useNavigate } from 'react-router-dom';
 import { BookOpen, Clock, Hand, Target, Download, Wifi, WifiOff, BookmarkCheck, ChevronRight } from 'lucide-react';
 import { getSurahs, isSynced, syncAllData } from '@/lib/api';
 import { db } from '@/lib/db';
-import type { Bookmark } from '@/lib/db';
+import type { Bookmark, Surah } from '@/lib/db';
 import { useAppStore } from '@/stores/appStore';
+
+const TOTAL_AYAT = 6236;
+
+// Cumulative ayat count up to (but not including) each surah
+const SURAH_AYAT_CUMULATIVE: Record<number, number> = {};
+const SURAH_AYAT_COUNTS = [
+  7,286,200,176,120,165,206,75,129,109,123,111,43,52,99,128,111,110,98,135,
+  112,78,118,64,77,227,93,88,69,60,34,30,73,54,45,83,182,88,75,85,54,53,
+  89,59,33,46,35,38,29,18,45,60,49,62,55,78,96,29,22,24,13,14,11,11,18,12,
+  12,30,52,52,44,28,28,20,56,40,31,50,40,46,42,29,19,36,25,22,17,19,26,30,
+  20,15,21,11,8,8,19,5,8,8,11,11,8,3,9,5,4,7,3,6,3,5,4,5,6
+];
+let cumulative = 0;
+SURAH_AYAT_COUNTS.forEach((count, i) => {
+  SURAH_AYAT_CUMULATIVE[i + 1] = cumulative;
+  cumulative += count;
+});
+
+function calculateGlobalAyat(surahNomor: number, ayat: number): number {
+  return (SURAH_AYAT_CUMULATIVE[surahNomor] || 0) + ayat;
+}
+
+function findSurahFromGlobal(globalAyat: number): { surah: number; ayat: number } {
+  let remaining = globalAyat;
+  for (let i = 0; i < SURAH_AYAT_COUNTS.length; i++) {
+    if (remaining <= SURAH_AYAT_COUNTS[i]) {
+      return { surah: i + 1, ayat: remaining };
+    }
+    remaining -= SURAH_AYAT_COUNTS[i];
+  }
+  return { surah: 114, ayat: 6 };
+}
 
 const HomePage = () => {
   const navigate = useNavigate();
@@ -13,20 +45,34 @@ const HomePage = () => {
   const [surahCount, setSurahCount] = useState(0);
   const [lastRead, setLastRead] = useState<Bookmark | null>(null);
   const [bookmarks, setBookmarks] = useState<Bookmark[]>([]);
+  const [khatamProgress, setKhatamProgress] = useState<number>(0);
+  const [khatamJuz, setKhatamJuz] = useState<string>('');
 
   useEffect(() => {
     isSynced().then(setSynced);
     getSurahs().then((s) => setSurahCount(s.length));
-
-    // Load last read & bookmarks
-    const loadBookmarks = async () => {
-      const lr = await db.bookmarks.where('isLastRead').equals(1).first();
-      setLastRead(lr || null);
-      const bmarks = await db.bookmarks.filter(b => !b.isLastRead).reverse().sortBy('createdAt');
-      setBookmarks(bmarks.slice(0, 5));
-    };
-    loadBookmarks();
+    loadData();
   }, [setSynced]);
+
+  const loadData = async () => {
+    // Last read
+    const lr = await db.bookmarks.where('isLastRead').equals(1).first();
+    setLastRead(lr || null);
+
+    // Calculate khatam progress from last read
+    if (lr) {
+      const globalAyat = calculateGlobalAyat(lr.surahNomor, lr.nomorAyat);
+      const pct = Math.round((globalAyat / TOTAL_AYAT) * 100 * 10) / 10;
+      setKhatamProgress(pct);
+      // Estimate juz (roughly 1 juz = ~20 pages ≈ TOTAL_AYAT/30)
+      const juz = Math.ceil(globalAyat / (TOTAL_AYAT / 30));
+      setKhatamJuz(`Juz ${Math.min(juz, 30)}`);
+    }
+
+    // Bookmarks
+    const bmarks = await db.bookmarks.filter(b => !b.isLastRead).reverse().sortBy('createdAt');
+    setBookmarks(bmarks.slice(0, 5));
+  };
 
   const handleSync = async () => {
     setSyncing(true);
@@ -87,23 +133,65 @@ const HomePage = () => {
         </button>
       )}
 
-      {/* Last Read Card */}
+      {/* Khatam Progress Card */}
       {lastRead && (
-        <button
-          onClick={() => navigate(`/quran/${lastRead.surahNomor}`)}
-          className="w-full mb-6 p-4 rounded-xl bg-gradient-to-br from-primary/10 to-accent/10 border border-primary/10 flex items-center gap-3 transition-all active:scale-[0.98]"
-        >
-          <div className="w-10 h-10 rounded-lg bg-primary/15 flex items-center justify-center flex-shrink-0">
-            <BookOpen className="w-5 h-5 text-primary" />
+        <div className="mb-4 p-4 rounded-xl bg-gradient-to-br from-primary/10 via-accent/5 to-primary/10 border border-primary/15 animate-fade-in">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <div className="w-8 h-8 rounded-lg bg-primary/15 flex items-center justify-center">
+                <Target className="w-4 h-4 text-primary" />
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">Progres Khatam Al-Qur'an</p>
+                <p className="text-lg font-bold text-foreground">{khatamProgress}%</p>
+              </div>
+            </div>
+            <span className="text-xs font-medium text-accent bg-accent/10 px-2 py-1 rounded-full">{khatamJuz}</span>
           </div>
-          <div className="flex-1 text-left">
-            <p className="text-xs text-muted-foreground">Lanjutkan Membaca</p>
-            <p className="text-sm font-semibold text-foreground">
-              {lastRead.surahNamaLatin} - Ayat {lastRead.nomorAyat}
-            </p>
+
+          {/* Progress bar */}
+          <div className="h-2.5 rounded-full bg-muted overflow-hidden mb-3">
+            <div
+              className="h-full rounded-full bg-gradient-to-r from-primary to-accent transition-all duration-700"
+              style={{ width: `${Math.min(khatamProgress, 100)}%` }}
+            />
           </div>
-          <ChevronRight className="w-4 h-4 text-muted-foreground" />
-        </button>
+
+          {/* Last read info */}
+          <button
+            onClick={() => navigate(`/quran/${lastRead.surahNomor}`)}
+            className="w-full flex items-center gap-3 p-2.5 rounded-lg bg-card/60 border border-border/50 transition-all active:scale-[0.98]"
+          >
+            <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
+              <BookOpen className="w-4 h-4 text-primary" />
+            </div>
+            <div className="flex-1 text-left min-w-0">
+              <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Terakhir Dibaca</p>
+              <p className="text-sm font-semibold text-foreground truncate">
+                {lastRead.surahNamaLatin} — Ayat {lastRead.nomorAyat}
+              </p>
+            </div>
+            <ChevronRight className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+          </button>
+
+          {/* Stats row */}
+          <div className="flex items-center justify-between mt-3 px-1">
+            <div className="text-center">
+              <p className="text-xs font-bold text-foreground">{calculateGlobalAyat(lastRead.surahNomor, lastRead.nomorAyat)}</p>
+              <p className="text-[10px] text-muted-foreground">Ayat dibaca</p>
+            </div>
+            <div className="h-4 w-px bg-border" />
+            <div className="text-center">
+              <p className="text-xs font-bold text-foreground">{TOTAL_AYAT - calculateGlobalAyat(lastRead.surahNomor, lastRead.nomorAyat)}</p>
+              <p className="text-[10px] text-muted-foreground">Ayat tersisa</p>
+            </div>
+            <div className="h-4 w-px bg-border" />
+            <div className="text-center">
+              <p className="text-xs font-bold text-foreground">{lastRead.surahNomor}/114</p>
+              <p className="text-[10px] text-muted-foreground">Surah</p>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Menu Grid */}
