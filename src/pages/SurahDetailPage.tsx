@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, BookOpen, List } from 'lucide-react';
+import { ArrowLeft, BookOpen, List, ChevronLeft, ChevronRight } from 'lucide-react';
 import { getVerses } from '@/lib/api';
 import { db } from '@/lib/db';
 import type { Surah, Verse } from '@/lib/db';
@@ -11,6 +11,8 @@ const toArabicNumeral = (n: number): string => {
   const arabicDigits = ['٠', '١', '٢', '٣', '٤', '٥', '٦', '٧', '٨', '٩'];
   return String(n).split('').map(d => arabicDigits[parseInt(d)]).join('');
 };
+
+const VERSES_PER_PAGE = 8;
 
 const SurahDetailPage = () => {
   const { id } = useParams<{ id: string }>();
@@ -58,7 +60,6 @@ const SurahDetailPage = () => {
             <p className="text-xs text-muted-foreground">{surah?.arti} • {surah?.jumlahAyat} Ayat</p>
           </div>
 
-          {/* View Mode Toggle */}
           <div className="flex items-center bg-muted rounded-lg p-0.5 gap-0.5">
             <button
               onClick={() => setViewMode('terjemah')}
@@ -89,7 +90,7 @@ const SurahDetailPage = () => {
   );
 };
 
-/* ── Terjemah View (Original) ── */
+/* ── Terjemah View ── */
 const TerjemahView = ({ surah, verses }: { surah: Surah | null; verses: Verse[] }) => (
   <>
     {surah && surah.nomor !== 1 && surah.nomor !== 9 && (
@@ -118,54 +119,142 @@ const TerjemahView = ({ surah, verses }: { surah: Surah | null; verses: Verse[] 
   </>
 );
 
-/* ── Mushaf View (Printed Quran Style) ── */
-const MushafView = ({ surah, verses }: { surah: Surah | null; verses: Verse[] }) => (
-  <div className="mushaf-container px-3 py-4">
-    {/* Surah Header Ornament */}
-    <div className="mushaf-surah-header mx-auto mb-6 max-w-md">
-      <div className="relative border-2 border-accent rounded-2xl py-4 px-6 text-center bg-accent/5">
-        {/* Corner ornaments */}
-        <div className="absolute top-0 left-0 w-4 h-4 border-t-2 border-l-2 border-accent rounded-tl-2xl -translate-x-px -translate-y-px" />
-        <div className="absolute top-0 right-0 w-4 h-4 border-t-2 border-r-2 border-accent rounded-tr-2xl translate-x-px -translate-y-px" />
-        <div className="absolute bottom-0 left-0 w-4 h-4 border-b-2 border-l-2 border-accent rounded-bl-2xl -translate-x-px translate-y-px" />
-        <div className="absolute bottom-0 right-0 w-4 h-4 border-b-2 border-r-2 border-accent rounded-br-2xl translate-x-px translate-y-px" />
+/* ── Mushaf View (Paginated Book Style) ── */
+const MushafView = ({ surah, verses }: { surah: Surah | null; verses: Verse[] }) => {
+  const [currentPage, setCurrentPage] = useState(0);
+  const totalPages = Math.ceil(verses.length / VERSES_PER_PAGE);
+  const pageRef = useRef<HTMLDivElement>(null);
 
-        <p className="font-arabic text-3xl text-foreground leading-relaxed mb-1">
-          سُورَةُ {surah?.nama?.replace(/[^\u0600-\u06FF\s]/g, '') || surah?.nama}
-        </p>
-        <p className="font-arabic text-sm text-muted-foreground">
-          {surah?.tempatTurun === 'Mekah' ? 'مَكِّيَّة' : 'مَدَنِيَّة'} - {surah?.jumlahAyat && toArabicNumeral(surah.jumlahAyat)} آيَات
-        </p>
+  // Swipe support
+  const touchStart = useRef<number | null>(null);
+  const handleTouchStart = useCallback((e: React.TouchEvent) => {
+    touchStart.current = e.touches[0].clientX;
+  }, []);
+  const handleTouchEnd = useCallback((e: React.TouchEvent) => {
+    if (touchStart.current === null) return;
+    const diff = touchStart.current - e.changedTouches[0].clientX;
+    if (Math.abs(diff) > 60) {
+      // RTL: swipe left = previous, swipe right = next
+      if (diff > 0) setCurrentPage(p => Math.max(0, p - 1));
+      else setCurrentPage(p => Math.min(totalPages - 1, p + 1));
+    }
+    touchStart.current = null;
+  }, [totalPages]);
+
+  const pageVerses = verses.slice(
+    currentPage * VERSES_PER_PAGE,
+    (currentPage + 1) * VERSES_PER_PAGE
+  );
+
+  const showBismillah = currentPage === 0 && surah && surah.nomor !== 1 && surah.nomor !== 9;
+  const showHeader = currentPage === 0;
+
+  useEffect(() => {
+    pageRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+  }, [currentPage]);
+
+  return (
+    <div
+      className="flex flex-col h-[calc(100vh-52px-72px)]"
+      onTouchStart={handleTouchStart}
+      onTouchEnd={handleTouchEnd}
+    >
+      {/* Page Content */}
+      <div ref={pageRef} className="flex-1 overflow-y-auto px-3 py-4">
+        <div className="mushaf-page max-w-lg mx-auto border border-border rounded-2xl bg-card shadow-sm overflow-hidden">
+          {/* Outer decorative border */}
+          <div className="border border-accent/30 m-2 rounded-xl overflow-hidden">
+            {/* Inner frame */}
+            <div className="border border-accent/15 m-1 rounded-lg">
+
+              {/* Surah Header (first page only) */}
+              {showHeader && (
+                <div className="mx-4 mt-4 mb-2">
+                  <div className="relative border-2 border-accent/60 rounded-xl py-3 px-5 text-center bg-accent/5">
+                    <div className="absolute -top-1 left-1/2 -translate-x-1/2 bg-card px-3">
+                      <span className="font-arabic text-xs text-accent">❁</span>
+                    </div>
+                    <p className="font-arabic text-2xl text-foreground leading-relaxed">
+                      سُورَةُ {surah?.nama?.replace(/[^\u0600-\u06FF\s]/g, '') || surah?.nama}
+                    </p>
+                    <p className="font-arabic text-xs text-muted-foreground mt-0.5">
+                      {surah?.tempatTurun === 'Mekah' ? 'مَكِّيَّة' : 'مَدَنِيَّة'} ۞ {surah?.jumlahAyat && toArabicNumeral(surah.jumlahAyat)} آيَة
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {/* Bismillah (first page, not Al-Fatihah or At-Taubah) */}
+              {showBismillah && (
+                <div className="text-center py-3">
+                  <p className="font-arabic text-[1.5rem] text-foreground leading-loose">
+                    بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ
+                  </p>
+                  <div className="flex items-center justify-center gap-2 mt-1">
+                    <div className="h-px w-12 bg-accent/30" />
+                    <span className="font-arabic text-accent/50 text-xs">۝</span>
+                    <div className="h-px w-12 bg-accent/30" />
+                  </div>
+                </div>
+              )}
+
+              {/* Verses */}
+              <div className="px-5 py-4">
+                <p
+                  className="font-arabic text-[1.45rem] leading-[2.8] text-foreground text-justify"
+                  dir="rtl"
+                  style={{ textAlignLast: 'center' }}
+                >
+                  {pageVerses.map((verse) => (
+                    <span key={verse.nomorAyat}>
+                      {verse.teksArab}
+                      {' '}
+                      <span className="inline-flex items-center justify-center text-accent text-[0.85rem] align-middle select-none">
+                        ﴿{toArabicNumeral(verse.nomorAyat)}﴾
+                      </span>
+                      {' '}
+                    </span>
+                  ))}
+                </p>
+              </div>
+
+              {/* Page number */}
+              <div className="text-center pb-3">
+                <span className="font-arabic text-xs text-muted-foreground">
+                  ─ {toArabicNumeral(currentPage + 1)} ─
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Page Navigation */}
+      <div className="flex items-center justify-between px-4 py-2 bg-card/90 backdrop-blur border-t border-border">
+        <button
+          onClick={() => setCurrentPage(p => Math.min(totalPages - 1, p + 1))}
+          disabled={currentPage >= totalPages - 1}
+          className="flex items-center gap-1 px-3 py-2 rounded-lg text-sm font-medium transition-colors disabled:opacity-30 disabled:cursor-not-allowed text-foreground hover:bg-muted"
+        >
+          <ChevronRight className="w-4 h-4" />
+          <span>السابق</span>
+        </button>
+
+        <span className="text-xs text-muted-foreground font-medium">
+          {currentPage + 1} / {totalPages}
+        </span>
+
+        <button
+          onClick={() => setCurrentPage(p => Math.max(0, p - 1))}
+          disabled={currentPage <= 0}
+          className="flex items-center gap-1 px-3 py-2 rounded-lg text-sm font-medium transition-colors disabled:opacity-30 disabled:cursor-not-allowed text-foreground hover:bg-muted"
+        >
+          <span>التالي</span>
+          <ChevronLeft className="w-4 h-4" />
+        </button>
       </div>
     </div>
-
-    {/* Bismillah */}
-    {surah && surah.nomor !== 1 && surah.nomor !== 9 && (
-      <div className="text-center mb-6">
-        <p className="font-arabic text-[1.7rem] text-foreground leading-loose">
-          بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ
-        </p>
-      </div>
-    )}
-
-    {/* Continuous Arabic Text (like a printed mushaf) */}
-    <div className="mushaf-page border border-border rounded-2xl bg-card p-5 shadow-sm">
-      <div className="mushaf-border border border-accent/20 rounded-xl p-4">
-        <p className="font-arabic text-[1.55rem] leading-[3] text-foreground text-justify" dir="rtl" style={{ textAlignLast: 'center' }}>
-          {verses.map((verse, idx) => (
-            <span key={verse.nomorAyat}>
-              {verse.teksArab}
-              {' '}
-              <span className="inline-flex items-center justify-center text-accent text-base align-middle mx-0.5 select-none">
-                ﴿{toArabicNumeral(verse.nomorAyat)}﴾
-              </span>
-              {' '}
-            </span>
-          ))}
-        </p>
-      </div>
-    </div>
-  </div>
-);
+  );
+};
 
 export default SurahDetailPage;
