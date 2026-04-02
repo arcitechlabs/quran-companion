@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { BookOpen, Clock, Hand, Target, Download, Wifi, WifiOff, BookmarkCheck, ChevronRight } from 'lucide-react';
+import { BookOpen, Clock, Hand, Target, Download, Wifi, WifiOff, BookmarkCheck, ChevronRight, Compass, TextSearch, CalendarDays, Coins, Moon } from 'lucide-react';
 import { getSurahs, isSynced, syncAllData } from '@/lib/api';
 import { db } from '@/lib/db';
 import type { Bookmark, Surah } from '@/lib/db';
@@ -90,6 +90,11 @@ const HomePage = () => {
     { icon: Clock, label: 'Jadwal Shalat', desc: 'Berdasarkan lokasi', path: '/prayer-times', color: 'bg-accent' },
     { icon: Hand, label: 'Dzikir Counter', desc: 'Tasbih digital', path: '/dzikir', color: 'bg-primary' },
     { icon: Target, label: 'Target Khatam', desc: 'Rencana bacaan', path: '/khatam', color: 'bg-accent' },
+    { icon: TextSearch, label: 'Cari Ayat', desc: 'Pencarian full-text', path: '/search', color: 'bg-primary' },
+    { icon: Compass, label: 'Arah Kiblat', desc: 'Kompas digital', path: '/qibla', color: 'bg-accent' },
+    { icon: CalendarDays, label: 'Kalender Hijriyah', desc: 'Hari penting Islam', path: '/hijriah', color: 'bg-primary' },
+    { icon: Coins, label: 'Kalkulator Zakat', desc: 'Maal & Fitrah', path: '/zakat', color: 'bg-accent' },
+    { icon: Moon, label: 'Jadwal Shaum', desc: 'Puasa & alarm sahur', path: '/fasting', color: 'bg-primary' },
   ];
 
   return (

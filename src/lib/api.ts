@@ -96,6 +96,19 @@ interface PrayerTimesResponse {
   };
 }
 
+export async function searchVerses(query: string): Promise<Verse[]> {
+  if (!query || query.trim().length < 2) return [];
+  const q = query.toLowerCase().trim();
+
+  const allVerses = await db.verses.toArray();
+  return allVerses.filter(
+    (v) =>
+      v.teksIndonesia.toLowerCase().includes(q) ||
+      v.teksLatin.toLowerCase().includes(q) ||
+      v.teksArab.includes(query.trim())
+  );
+}
+
 export async function fetchPrayerTimes(lat: number, lng: number): Promise<PrayerTimesResponse> {
   const today = new Date();
   const dd = String(today.getDate()).padStart(2, '0');

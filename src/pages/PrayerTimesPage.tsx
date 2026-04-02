@@ -1,6 +1,9 @@
 import { useEffect, useState } from 'react';
-import { MapPin, Loader2 } from 'lucide-react';
+import { MapPin, Loader2, Bell, BellOff } from 'lucide-react';
 import { fetchPrayerTimes } from '@/lib/api';
+import { requestNotificationPermission, schedulePrayerNotifications, cancelPrayerNotifications, isNotificationEnabled } from '@/lib/notifications';
+import { useAppStore } from '@/stores/appStore';
+import { toast } from 'sonner';
 
 interface PrayerTime {
   name: string;
@@ -14,6 +17,8 @@ const PrayerTimesPage = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [locationName, setLocationName] = useState('');
+  const { notificationsEnabled, setNotificationsEnabled } = useAppStore();
+  const [notifLoading, setNotifLoading] = useState(false);
 
   useEffect(() => {
     const load = async () => {
@@ -44,6 +49,9 @@ const PrayerTimesPage = () => {
         ]);
         const h = data.date.hijri;
         setHijri(`${h.day} ${h.month.ar} ${h.year}`);
+
+        // Restore notification state
+        setNotificationsEnabled(isNotificationEnabled());
       } catch (e) {
         setError('Gagal memuat jadwal shalat');
       }
@@ -65,6 +73,31 @@ const PrayerTimesPage = () => {
 
   const nextPrayer = getNextPrayer();
 
+  const handleToggleNotifications = async () => {
+    setNotifLoading(true);
+    try {
+      if (notificationsEnabled) {
+        await cancelPrayerNotifications();
+        setNotificationsEnabled(false);
+        toast('Notifikasi dimatikan', { duration: 2000 });
+      } else {
+        const granted = await requestNotificationPermission();
+        if (!granted) {
+          toast('Izin notifikasi ditolak. Aktifkan di pengaturan browser/HP.', { duration: 3000 });
+          setNotifLoading(false);
+          return;
+        }
+        const prayerTimes = times.filter(t => t.name !== 'Syuruq');
+        await schedulePrayerNotifications(prayerTimes);
+        setNotificationsEnabled(true);
+        toast('Notifikasi shalat diaktifkan!', { duration: 2000 });
+      }
+    } catch (e) {
+      toast('Gagal mengatur notifikasi', { duration: 2000 });
+    }
+    setNotifLoading(false);
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -83,11 +116,27 @@ const PrayerTimesPage = () => {
 
   return (
     <div className="min-h-screen pb-20 pt-6 px-4">
-      <h1 className="text-xl font-bold text-foreground mb-1">Jadwal Shalat</h1>
+      <div className="flex items-center justify-between mb-1">
+        <h1 className="text-xl font-bold text-foreground">Jadwal Shalat</h1>
+        <button
+          onClick={handleToggleNotifications}
+          disabled={notifLoading}
+          className={`p-2 rounded-lg transition-all active:scale-90 ${
+            notificationsEnabled
+              ? 'bg-primary/10 text-primary'
+              : 'bg-muted text-muted-foreground'
+          }`}
+        >
+          {notificationsEnabled ? <Bell className="w-5 h-5" /> : <BellOff className="w-5 h-5" />}
+        </button>
+      </div>
       <div className="flex items-center gap-1.5 mb-6">
         <MapPin className="w-3.5 h-3.5 text-muted-foreground" />
         <p className="text-xs text-muted-foreground">{locationName}</p>
         {hijri && <span className="text-xs text-muted-foreground">• {hijri}</span>}
+        {notificationsEnabled && (
+          <span className="text-xs text-primary font-medium ml-1">• Notifikasi aktif</span>
+        )}
       </div>
 
       <div className="space-y-2.5">
@@ -109,9 +158,14 @@ const PrayerTimesPage = () => {
                   <p className="text-xs text-muted-foreground font-arabic">{t.nameAr}</p>
                 </div>
               </div>
-              <p className={`text-lg font-bold tabular-nums ${isNext ? 'text-primary' : 'text-foreground'}`}>
-                {t.time}
-              </p>
+              <div className="flex items-center gap-2">
+                {notificationsEnabled && t.name !== 'Syuruq' && (
+                  <Bell className="w-3 h-3 text-primary/50" />
+                )}
+                <p className={`text-lg font-bold tabular-nums ${isNext ? 'text-primary' : 'text-foreground'}`}>
+                  {t.time}
+                </p>
+              </div>
             </div>
           );
         })}

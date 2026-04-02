@@ -1,12 +1,13 @@
-import { useEffect, useState, useRef, useCallback } from 'react';
+import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, BookOpen, List, ChevronLeft, ChevronRight, Bookmark, BookmarkCheck } from 'lucide-react';
+import { ArrowLeft, BookOpen, List, ChevronLeft, ChevronRight, Bookmark, BookmarkCheck, Play, Pause, Palette } from 'lucide-react';
 import { getVerses } from '@/lib/api';
 import { db } from '@/lib/db';
 import type { Surah, Verse, Bookmark as BookmarkType } from '@/lib/db';
 import { toast } from 'sonner';
+import { useAudioStore } from '@/stores/audioStore';
 
-type ViewMode = 'terjemah' | 'mushaf';
+type ViewMode = 'terjemah' | 'mushaf' | 'tajweed';
 
 const toArabicNumeral = (n: number): string => {
   const arabicDigits = ['٠', '١', '٢', '٣', '٤', '٥', '٦', '٧', '٨', '٩'];
@@ -61,6 +62,31 @@ const SurahDetailPage = () => {
   const [loading, setLoading] = useState(true);
   const [viewMode, setViewMode] = useState<ViewMode>('terjemah');
   const [bookmarkedAyats, setBookmarkedAyats] = useState<Set<number>>(new Set());
+
+  const { isPlaying, currentSurah, currentAyat, play, pause, setAutoPlayNext } = useAudioStore();
+
+  const handlePlayAyat = useCallback((ayat: number) => {
+    if (!surah) return;
+    const verse = verses.find(v => v.nomorAyat === ayat);
+    if (!verse?.audio) return;
+
+    if (currentSurah === surah.nomor && currentAyat === ayat && isPlaying) {
+      pause();
+    } else {
+      play(surah.nomor, ayat, verse.audio);
+    }
+  }, [surah, verses, currentSurah, currentAyat, isPlaying, play, pause]);
+
+  useEffect(() => {
+    if (!surah) return;
+    setAutoPlayNext(() => {
+      const nextAyat = (currentAyat || 0) + 1;
+      const nextVerse = verses.find(v => v.nomorAyat === nextAyat);
+      if (nextVerse?.audio) {
+        play(surah.nomor, nextAyat, nextVerse.audio);
+      }
+    });
+  }, [surah, currentAyat, verses, play, setAutoPlayNext]);
 
   useEffect(() => {
     const load = async () => {
@@ -142,6 +168,13 @@ const SurahDetailPage = () => {
             >
               <BookOpen className="w-4 h-4" />
             </button>
+            <button
+              onClick={() => setViewMode('tajweed')}
+              className={`p-1.5 rounded-md transition-colors ${viewMode === 'tajweed' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+              title="Tajweed"
+            >
+              <Palette className="w-4 h-4" />
+            </button>
           </div>
 
           <p className="font-arabic text-xl text-primary">{surah?.nama}</p>
@@ -149,9 +182,11 @@ const SurahDetailPage = () => {
       </div>
 
       {viewMode === 'mushaf' ? (
-        <MushafView surah={surah} verses={verses} bookmarkedAyats={bookmarkedAyats} onBookmark={handleBookmark} />
+        <MushafView surah={surah} verses={verses} bookmarkedAyats={bookmarkedAyats} onBookmark={handleBookmark} playingAyat={currentSurah === surah?.nomor ? currentAyat : null} onPlayAyat={handlePlayAyat} />
+      ) : viewMode === 'tajweed' ? (
+        <TajweedView surah={surah} verses={verses} bookmarkedAyats={bookmarkedAyats} onBookmark={handleBookmark} playingAyat={currentSurah === surah?.nomor ? currentAyat : null} onPlayAyat={handlePlayAyat} />
       ) : (
-        <TerjemahView surah={surah} verses={verses} bookmarkedAyats={bookmarkedAyats} onBookmark={handleBookmark} />
+        <TerjemahView surah={surah} verses={verses} bookmarkedAyats={bookmarkedAyats} onBookmark={handleBookmark} playingAyat={currentSurah === surah?.nomor ? currentAyat : null} onPlayAyat={handlePlayAyat} />
       )}
     </div>
   );
@@ -162,10 +197,12 @@ interface ViewProps {
   verses: Verse[];
   bookmarkedAyats: Set<number>;
   onBookmark: (ayat: number) => void;
+  playingAyat: number | null;
+  onPlayAyat: (ayat: number) => void;
 }
 
 /* ── Terjemah View ── */
-const TerjemahView = ({ surah, verses, bookmarkedAyats, onBookmark }: ViewProps) => (
+const TerjemahView = ({ surah, verses, bookmarkedAyats, onBookmark, playingAyat, onPlayAyat }: ViewProps) => (
   <>
     {surah && surah.nomor !== 1 && surah.nomor !== 9 && (
       <div className="text-center py-6 px-4">
@@ -177,11 +214,24 @@ const TerjemahView = ({ surah, verses, bookmarkedAyats, onBookmark }: ViewProps)
     <div className="px-4 space-y-4 py-4">
       {verses.map((verse) => {
         const isMarked = bookmarkedAyats.has(verse.nomorAyat);
+        const isPlayingThis = playingAyat === verse.nomorAyat;
         return (
-          <div key={verse.nomorAyat} className={`p-4 rounded-xl bg-card border animate-fade-in ${isMarked ? 'border-accent shadow-sm' : 'border-border'}`}>
-            <div className="flex items-start justify-between mb-3">
-              <div className="w-7 h-7 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
-                <span className="text-xs font-bold text-primary">{verse.nomorAyat}</span>
+          <div key={verse.nomorAyat} className={`p-4 rounded-xl bg-card border animate-fade-in ${isMarked ? 'border-accent shadow-sm' : 'border-border'} ${isPlayingThis ? 'ring-2 ring-primary/40' : ''}`}>
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <div className="w-7 h-7 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
+                  <span className="text-xs font-bold text-primary">{verse.nomorAyat}</span>
+                </div>
+                {verse.audio && (
+                  <button
+                    onClick={() => onPlayAyat(verse.nomorAyat)}
+                    className={`w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 transition-colors ${
+                      isPlayingThis ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground hover:bg-primary/10 hover:text-primary'
+                    }`}
+                  >
+                    {isPlayingThis ? <Pause className="w-3 h-3" /> : <Play className="w-3 h-3 ml-0.5" />}
+                  </button>
+                )}
               </div>
               <button onClick={() => onBookmark(verse.nomorAyat)} className="p-1.5 rounded-lg hover:bg-muted transition-colors">
                 {isMarked ? (
@@ -204,7 +254,7 @@ const TerjemahView = ({ surah, verses, bookmarkedAyats, onBookmark }: ViewProps)
 );
 
 /* ── Mushaf View (Paginated) ── */
-const MushafView = ({ surah, verses, bookmarkedAyats, onBookmark }: ViewProps) => {
+const MushafView = ({ surah, verses, bookmarkedAyats, onBookmark, playingAyat, onPlayAyat }: ViewProps) => {
   const [currentPage, setCurrentPage] = useState(0);
   const totalPages = Math.ceil(verses.length / VERSES_PER_PAGE);
   const pageRef = useRef<HTMLDivElement>(null);
@@ -276,11 +326,12 @@ const MushafView = ({ surah, verses, bookmarkedAyats, onBookmark }: ViewProps) =
                 <p className="font-arabic text-[1.45rem] leading-[2.8] text-foreground text-justify" dir="rtl" style={{ textAlignLast: 'center' }}>
                   {pageVerses.map((verse) => {
                     const isMarked = bookmarkedAyats.has(verse.nomorAyat);
+                    const isPlayingThis = playingAyat === verse.nomorAyat;
                     return (
-                      <span key={verse.nomorAyat} onClick={() => onBookmark(verse.nomorAyat)} className="cursor-pointer">
-                        <span className={isMarked ? 'bg-accent/15 rounded px-0.5' : ''}>{verse.teksArab}</span>
+                      <span key={verse.nomorAyat} onClick={() => verse.audio ? onPlayAyat(verse.nomorAyat) : onBookmark(verse.nomorAyat)} className="cursor-pointer">
+                        <span className={`${isMarked ? 'bg-accent/15 rounded px-0.5' : ''} ${isPlayingThis ? 'bg-primary/15 rounded px-0.5' : ''}`}>{verse.teksArab}</span>
                         {' '}
-                        <span className={`inline-flex items-center justify-center text-[0.85rem] align-middle select-none ${isMarked ? 'text-accent' : 'text-accent'}`}>
+                        <span className={`inline-flex items-center justify-center text-[0.85rem] align-middle select-none ${isPlayingThis ? 'text-primary font-bold' : 'text-accent'}`}>
                           ﴿{toArabicNumeral(verse.nomorAyat)}﴾
                         </span>
                         {' '}
@@ -312,5 +363,130 @@ const MushafView = ({ surah, verses, bookmarkedAyats, onBookmark }: ViewProps) =
     </div>
   );
 };
+
+/* ── Tajweed View ── */
+const TAJWEED_RULES = [
+  { pattern: /[\u064E\u064F\u0650\u064B\u064C\u064D]/g, name: 'Harakat', color: '' }, // normal vowels
+  { pattern: /[ّ]/g, name: 'Tasydid (Ghunnah)', color: 'text-red-500' },
+  { pattern: /[ْ]/g, name: 'Sukun', color: 'text-sky-500' },
+  { pattern: /[ٓ]/g, name: 'Mad', color: 'text-amber-500' },
+  { pattern: /[ۖ]/g, name: 'Lam', color: 'text-green-500' },
+  { pattern: /[ۗ]/g, name: 'Tanwin', color: 'text-purple-500' },
+  { pattern: /[ۘ]/g, name: 'Qalqalah', color: 'text-orange-500' },
+  { pattern: /[ۙ]/g, name: 'Ikhfa', color: 'text-blue-500' },
+  { pattern: /[ۚ]/g, name: 'Idgham', color: 'text-emerald-500' },
+  { pattern: /[ۛ]/g, name: 'Iqlab', color: 'text-violet-500' },
+  { pattern: /[ۜ]/g, name: 'Izhar', color: 'text-yellow-600' },
+  { pattern: /[۬]/g, name: 'Ghunnah', color: 'text-red-400' },
+  { pattern: /[ۭ]/g, name: 'Mad Lazim', color: 'text-amber-600' },
+];
+
+function colorizeTajweed(text: string): React.ReactNode[] {
+  const parts: React.ReactNode[] = [];
+  let lastIdx = 0;
+  const chars = [...text];
+
+  for (let i = 0; i < chars.length; i++) {
+    const ch = chars[i];
+    let matched = false;
+
+    for (const rule of TAJWEED_RULES) {
+      if (ch.match(rule.pattern)) {
+        if (lastIdx < i) {
+          parts.push(<span key={`t${lastIdx}`}>{chars.slice(lastIdx, i).join('')}</span>);
+        }
+        parts.push(
+          <span key={`t${i}`} className={`${rule.color} font-bold`} title={rule.name}>
+            {ch}
+          </span>
+        );
+        lastIdx = i + 1;
+        matched = true;
+        break;
+      }
+    }
+
+    if (matched) continue;
+  }
+
+  if (lastIdx < chars.length) {
+    parts.push(<span key={`t${lastIdx}`}>{chars.slice(lastIdx).join('')}</span>);
+  }
+
+  return parts;
+}
+
+const TajweedView = ({ surah, verses, bookmarkedAyats, onBookmark, playingAyat, onPlayAyat }: ViewProps) => (
+  <>
+    {surah && surah.nomor !== 1 && surah.nomor !== 9 && (
+      <div className="text-center py-6 px-4">
+        <p className="font-arabic text-2xl text-primary leading-loose">
+          بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ
+        </p>
+      </div>
+    )}
+
+    {/* Legend */}
+    <div className="px-4 mb-4">
+      <div className="p-3 rounded-xl bg-card border border-border">
+        <p className="text-xs font-semibold text-foreground mb-2">Legenda Warna Tajweed</p>
+        <div className="flex flex-wrap gap-x-3 gap-y-1">
+          {[
+            { name: 'Tasydid', color: 'text-red-500' },
+            { name: 'Sukun', color: 'text-sky-500' },
+            { name: 'Mad', color: 'text-amber-500' },
+            { name: 'Tanwin', color: 'text-purple-500' },
+            { name: 'Qalqalah', color: 'text-orange-500' },
+            { name: 'Idgham', color: 'text-emerald-500' },
+            { name: 'Ikhfa', color: 'text-blue-500' },
+            { name: 'Ghunnah', color: 'text-red-400' },
+          ].map(r => (
+            <span key={r.name} className={`text-[10px] ${r.color} font-medium`}>● {r.name}</span>
+          ))}
+        </div>
+      </div>
+    </div>
+
+    <div className="px-4 space-y-4 py-4">
+      {verses.map((verse) => {
+        const isMarked = bookmarkedAyats.has(verse.nomorAyat);
+        const isPlayingThis = playingAyat === verse.nomorAyat;
+        return (
+          <div key={verse.nomorAyat} className={`p-4 rounded-xl bg-card border animate-fade-in ${isMarked ? 'border-accent shadow-sm' : 'border-border'} ${isPlayingThis ? 'ring-2 ring-primary/40' : ''}`}>
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <div className="w-7 h-7 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
+                  <span className="text-xs font-bold text-primary">{verse.nomorAyat}</span>
+                </div>
+                {verse.audio && (
+                  <button
+                    onClick={() => onPlayAyat(verse.nomorAyat)}
+                    className={`w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 transition-colors ${
+                      isPlayingThis ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground hover:bg-primary/10 hover:text-primary'
+                    }`}
+                  >
+                    {isPlayingThis ? <Pause className="w-3 h-3" /> : <Play className="w-3 h-3 ml-0.5" />}
+                  </button>
+                )}
+              </div>
+              <button onClick={() => onBookmark(verse.nomorAyat)} className="p-1.5 rounded-lg hover:bg-muted transition-colors">
+                {isMarked ? (
+                  <BookmarkCheck className="w-4.5 h-4.5 text-accent" />
+                ) : (
+                  <Bookmark className="w-4.5 h-4.5 text-muted-foreground" />
+                )}
+              </button>
+            </div>
+            <p className="font-arabic text-right text-xl leading-[2.5] text-foreground mb-4" dir="rtl">
+              {colorizeTajweed(verse.teksArab)}
+            </p>
+            <p className="text-sm text-primary/80 italic mb-2">{verse.teksLatin}</p>
+            <p className="text-sm text-muted-foreground">{verse.teksIndonesia}</p>
+          </div>
+        );
+      })}
+    </div>
+  </>
+);
 
 export default SurahDetailPage;
