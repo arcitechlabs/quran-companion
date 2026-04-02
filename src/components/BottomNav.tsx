@@ -32,6 +32,7 @@ const BottomNav = () => {
               }`}
             >
               {/* Icon */}
+              {/* Icon */}
               <tab.icon className={`w-5 h-5 ${active ? 'stroke-[2.5]' : ''}`} />
               <span className="text-[10px] font-medium">{tab.label}</span>
             </button>
