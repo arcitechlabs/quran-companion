@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { BookOpen, Clock, Hand, Target, Download, Wifi, WifiOff, BookmarkCheck, ChevronRight, CalendarDays, Coins, Moon } from 'lucide-react';
-import { getSurahs, isSynced, syncAllData } from '@/lib/api';
+import { BookOpen, Clock, Hand, Target, Download, Wifi, WifiOff, BookmarkCheck, ChevronRight, CalendarDays, Coins, Moon, MapPin } from 'lucide-react';
+import { getSurahs, isSynced, syncAllData, fetchPrayerTimes, reverseGeocode } from '@/lib/api';
 import { db } from '@/lib/db';
 import type { Bookmark, Surah } from '@/lib/db';
 import { useAppStore } from '@/stores/appStore';
@@ -48,6 +48,9 @@ const HomePage = () => {
   const [khatamProgress, setKhatamProgress] = useState<number>(0);
   const [khatamJuz, setKhatamJuz] = useState<string>('');
   const [loading, setLoading] = useState<boolean>(true);
+  const [hijriDate, setHijriDate] = useState<string>('');
+  const [nextPrayers, setNextPrayers] = useState<{ name: string; time: string }[]>([]);
+  const [locationName, setLocationName] = useState<string>('');
 
   useEffect(() => {
     isSynced().then(setSynced);
@@ -78,10 +81,59 @@ const HomePage = () => {
       // Bookmarks
       const bmarks = await db.bookmarks.filter((b) => !b.isLastRead).reverse().sortBy('createdAt');
       setBookmarks(bmarks.slice(0, 5));
+
+      // Prayer times and location
+      await loadPrayerData();
     } catch (err) {
       console.error('loadData error:', err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadPrayerData = async () => {
+    try {
+      let lat = -6.2088;
+      let lng = 106.8456;
+      let city = 'Jakarta';
+
+      try {
+        const pos = await new Promise<GeolocationPosition>((resolve, reject) =>
+          navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 5000 })
+        );
+        lat = pos.coords.latitude;
+        lng = pos.coords.longitude;
+        city = await reverseGeocode(lat, lng);
+      } catch {
+        // Use default
+      }
+
+      setLocationName(city);
+
+      const data = await fetchPrayerTimes(lat, lng);
+      const h = data.date.hijri;
+      setHijriDate(`${h.day} ${h.month.ar} ${h.year}`);
+
+      const t = data.timings;
+      const prayers = [
+        { name: 'Subuh', time: t.Fajr },
+        { name: 'Dzuhur', time: t.Dhuhr },
+        { name: 'Ashar', time: t.Asr },
+        { name: 'Maghrib', time: t.Maghrib },
+        { name: 'Isya', time: t.Isha },
+      ];
+
+      const now = new Date();
+      const currentMinutes = now.getHours() * 60 + now.getMinutes();
+
+      const upcoming = prayers.filter(p => {
+        const [h, m] = p.time.split(':').map(Number);
+        return h * 60 + m > currentMinutes;
+      }).slice(0, 3);
+
+      setNextPrayers(upcoming);
+    } catch (err) {
+      console.error('loadPrayerData error:', err);
     }
   };
 
@@ -235,6 +287,33 @@ const HomePage = () => {
             <div className="flex items-center gap-1 text-xs text-muted-foreground">
               {isOnline ? <Wifi className="w-3.5 h-3.5 text-primary" /> : <WifiOff className="w-3.5 h-3.5 text-destructive" />}
               {isOnline ? 'Online' : 'Offline'}
+            </div>
+          </div>
+        </div>
+
+        {/* Islamic Info */}
+        <div className="mb-6 rounded-xl border border-border bg-white/60 dark:bg-slate-900/60 backdrop-blur-sm p-4 shadow-sm">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-center">
+            <div>
+              <div className="text-xs text-muted-foreground mb-1">Tanggal Hijriyah</div>
+              <div className="text-sm font-semibold text-foreground">{hijriDate || 'Memuat...'}</div>
+            </div>
+            <div>
+              <div className="text-xs text-muted-foreground mb-1">Shalat Selanjutnya</div>
+              <div className="space-y-1">
+                {nextPrayers.length > 0 ? nextPrayers.map((p, i) => (
+                  <div key={p.name} className="text-xs">
+                    <span className="font-medium text-primary">{p.name}</span> {p.time}
+                  </div>
+                )) : <div className="text-xs text-muted-foreground">Memuat...</div>}
+              </div>
+            </div>
+            <div>
+              <div className="text-xs text-muted-foreground mb-1">Wilayah</div>
+              <div className="text-sm font-semibold text-foreground flex items-center justify-center gap-1">
+                <MapPin className="w-3 h-3" />
+                {locationName || 'Memuat...'}
+              </div>
             </div>
           </div>
         </div>

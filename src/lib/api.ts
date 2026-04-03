@@ -3,6 +3,24 @@ import { JUZ_DATA, type JuzRange } from './juzData';
 
 const API_BASE = 'https://equran.id/api/v2';
 
+interface PrayerTimesResponse {
+  timings: {
+    Fajr: string;
+    Sunrise: string;
+    Dhuhr: string;
+    Asr: string;
+    Maghrib: string;
+    Isha: string;
+  };
+  date: {
+    hijri: {
+      day: string;
+      month: { ar: string };
+      year: string;
+    };
+  };
+}
+
 export async function fetchAndSyncSurahs(onProgress?: (p: number) => void): Promise<void> {
   const existing = await db.surahs.count();
   if (existing >= 114) return;
@@ -157,4 +175,17 @@ export async function fetchPrayerTimes(lat: number, lng: number): Promise<Prayer
   );
   const data = await res.json();
   return data.data;
+}
+
+export async function reverseGeocode(lat: number, lng: number): Promise<string> {
+  try {
+    const res = await fetch(
+      `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=10&addressdetails=1`
+    );
+    const data = await res.json();
+    const city = data.address?.city || data.address?.town || data.address?.village || data.address?.state || 'Unknown';
+    return city;
+  } catch {
+    return 'Unknown';
+  }
 }
