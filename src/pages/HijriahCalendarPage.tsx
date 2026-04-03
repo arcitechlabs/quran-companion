@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, ChevronLeft, ChevronRight, Star } from 'lucide-react';
+import { ArrowLeft, ChevronLeft, ChevronRight, Star, Clock, Bell, BellOff } from 'lucide-react';
 
 const HIJRI_MONTHS = [
   { name: 'Muharram', arabic: 'مُحَرَّم', days: 30 },
@@ -78,6 +78,10 @@ const HijriahCalendarPage = () => {
 
   const [viewMonth, setViewMonth] = useState(todayHijri.month);
   const [viewYear, setViewYear] = useState(todayHijri.year);
+  const [selectedDate, setSelectedDate] = useState<{ hijriDay: number; gregDate: Date; special?: { name: string; color: string } } | null>(null);
+  const [showFastingModal, setShowFastingModal] = useState(false);
+  const [fastingEnabled, setFastingEnabled] = useState(false);
+  const [sahurAlarmEnabled, setSahurAlarmEnabled] = useState(false);
 
   const calendarDays = useMemo(() => {
     const firstGreg = hijriToGregorian(1, viewMonth, viewYear);
@@ -130,6 +134,58 @@ const HijriahCalendarPage = () => {
     else setViewMonth(m => m + 1);
   };
 
+  const handleDateClick = (day: { hijriDay: number; gregDate: Date; special?: { name: string; color: string } }) => {
+    setSelectedDate(day);
+    setShowFastingModal(true);
+    // Load existing settings for this date
+    const fastingKey = `fasting-${day.gregDate.toDateString()}`;
+    const sahurKey = `sahur-${day.gregDate.toDateString()}`;
+    setFastingEnabled(localStorage.getItem(fastingKey) === 'true');
+    setSahurAlarmEnabled(localStorage.getItem(sahurKey) === 'true');
+  };
+
+  const handleSaveFastingSettings = async () => {
+    if (!selectedDate) return;
+
+    const fastingKey = `fasting-${selectedDate.gregDate.toDateString()}`;
+    const sahurKey = `sahur-${selectedDate.gregDate.toDateString()}`;
+
+    if (fastingEnabled) {
+      localStorage.setItem(fastingKey, 'true');
+    } else {
+      localStorage.removeItem(fastingKey);
+    }
+
+    if (sahurAlarmEnabled) {
+      // Request notification permission if not granted
+      if ('Notification' in window && Notification.permission === 'default') {
+        await Notification.requestPermission();
+      }
+
+      localStorage.setItem(sahurKey, 'true');
+      // Schedule sahur alarm for 4:00 AM
+      const sahurTime = new Date(selectedDate.gregDate);
+      sahurTime.setHours(4, 0, 0, 0);
+
+      if (sahurTime > new Date()) {
+        const delay = sahurTime.getTime() - Date.now();
+        setTimeout(() => {
+          if ('Notification' in window && Notification.permission === 'granted') {
+            new Notification('⏰ Waktu Sahur!', {
+              body: 'Sudah masuk waktu sahur. Persiapkan sahur Anda.',
+              icon: '/favicon.ico',
+              tag: 'sahur-alarm',
+            });
+          }
+        }, delay);
+      }
+    } else {
+      localStorage.removeItem(sahurKey);
+    }
+
+    setShowFastingModal(false);
+  };
+
   const monthInfo = HIJRI_MONTHS[viewMonth - 1];
 
   return (
@@ -172,18 +228,19 @@ const HijriahCalendarPage = () => {
       {/* Calendar grid */}
       <div className="grid grid-cols-7 gap-1">
         {calendarDays.map((day, i) => (
-          <div
+          <button
             key={i}
-            className={`relative aspect-square flex flex-col items-center justify-center rounded-lg text-xs transition-colors ${
-              day.isToday ? 'bg-primary text-primary-foreground font-bold' :
-              day.special ? `${day.special.color} font-medium` :
-              day.isCurrentMonth ? 'bg-card border border-border text-foreground' :
-              'text-muted-foreground'
+            onClick={() => handleDateClick(day)}
+            className={`relative aspect-square flex flex-col items-center justify-center rounded-lg text-xs transition-all hover:scale-105 active:scale-95 ${
+              day.isToday ? 'bg-primary text-primary-foreground font-bold shadow-lg' :
+              day.special ? `${day.special.color} font-medium hover:shadow-md` :
+              day.isCurrentMonth ? 'bg-card border border-border text-foreground hover:bg-accent/10 hover:border-accent/30' :
+              'text-muted-foreground hover:bg-muted/50'
             }`}
           >
             <span>{day.hijriDay}</span>
             {day.special && <Star className="w-2 h-2 absolute top-1 right-1" />}
-          </div>
+          </button>
         ))}
       </div>
 
@@ -213,6 +270,92 @@ const HijriahCalendarPage = () => {
           <p className="text-xs text-muted-foreground text-center py-4">Tidak ada hari khusus di bulan ini</p>
         )}
       </div>
+
+      {/* Fasting Modal */}
+      {showFastingModal && selectedDate && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-background rounded-2xl shadow-2xl max-w-sm w-full p-6 border border-border">
+            <div className="text-center mb-6">
+              <div className="w-16 h-16 rounded-full bg-gradient-to-r from-primary to-accent flex items-center justify-center mx-auto mb-4">
+                <Clock className="w-8 h-8 text-primary-foreground" />
+              </div>
+              <h3 className="text-lg font-bold text-foreground mb-2">Atur Puasa</h3>
+              <p className="text-sm text-muted-foreground">
+                {selectedDate.hijriDay} {HIJRI_MONTHS[viewMonth - 1].name} {viewYear}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                {selectedDate.gregDate.toLocaleDateString('id-ID', {
+                  weekday: 'long',
+                  year: 'numeric',
+                  month: 'long',
+                  day: 'numeric'
+                })}
+              </p>
+            </div>
+
+            <div className="space-y-4 mb-6">
+              <div className="flex items-center justify-between p-4 rounded-xl bg-card border border-border">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
+                    <Star className="w-5 h-5 text-primary" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-foreground">Aktifkan Puasa</p>
+                    <p className="text-xs text-muted-foreground">Tandai hari ini sebagai hari puasa</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setFastingEnabled(!fastingEnabled)}
+                  className={`w-12 h-6 rounded-full transition-colors ${
+                    fastingEnabled ? 'bg-primary' : 'bg-muted'
+                  }`}
+                >
+                  <div className={`w-5 h-5 rounded-full bg-white transition-transform ${
+                    fastingEnabled ? 'translate-x-6' : 'translate-x-0.5'
+                  }`} />
+                </button>
+              </div>
+
+              <div className="flex items-center justify-between p-4 rounded-xl bg-card border border-border">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-lg bg-accent/10 flex items-center justify-center">
+                    {sahurAlarmEnabled ? <Bell className="w-5 h-5 text-accent" /> : <BellOff className="w-5 h-5 text-muted-foreground" />}
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-foreground">Alarm Sahur</p>
+                    <p className="text-xs text-muted-foreground">Pengingat pukul 04:00 pagi</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setSahurAlarmEnabled(!sahurAlarmEnabled)}
+                  className={`w-12 h-6 rounded-full transition-colors ${
+                    sahurAlarmEnabled ? 'bg-accent' : 'bg-muted'
+                  }`}
+                >
+                  <div className={`w-5 h-5 rounded-full bg-white transition-transform ${
+                    sahurAlarmEnabled ? 'translate-x-6' : 'translate-x-0.5'
+                  }`} />
+                </button>
+              </div>
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowFastingModal(false)}
+                className="flex-1 px-4 py-3 rounded-xl border border-border text-foreground hover:bg-muted transition-colors"
+              >
+                Batal
+              </button>
+              <button
+                onClick={handleSaveFastingSettings}
+                className="flex-1 px-4 py-3 rounded-xl bg-primary text-primary-foreground hover:bg-primary/90 transition-colors font-medium"
+              >
+                Simpan
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
