@@ -1,7 +1,16 @@
-import { db, type Surah, type Verse } from './db';
+import { db, type Surah, type Verse, type Translation } from './db';
 import { JUZ_DATA, type JuzRange } from './juzData';
 
 const API_BASE = 'https://equran.id/api/v2';
+const GLOBAL_QURAN_API = 'https://api.globalquran.com';
+
+const TRANSLATIONS = [
+  { id: 'en.sahih', name: 'Saheeh International', language: 'English' },
+  { id: 'id.indonesian', name: 'Indonesian', language: 'Indonesian' },
+  { id: 'ar.abdullahbasfar', name: 'Abdullah Basfar', language: 'Arabic' },
+  { id: 'ur.jalandhry', name: 'Fateh Muhammad Jalandhry', language: 'Urdu' },
+  { id: 'fr.hamidullah', name: 'Muhammad Hamidullah', language: 'French' },
+];
 
 interface PrayerTimesResponse {
   timings: {
@@ -97,6 +106,51 @@ export async function isSynced(): Promise<boolean> {
   return !!meta;
 }
 
+export async function fetchAndSyncTranslations(
+  surahNumber: number,
+  translationId: string,
+  onProgress?: (current: number, total: number) => void
+): Promise<void> {
+  const existing = await db.translations
+    .where('[surahNomor+translationId]')
+    .equals([surahNumber, translationId])
+    .count();
+  if (existing > 0) return;
+
+  const res = await fetch(`${GLOBAL_QURAN_API}/quran/${translationId}/${surahNumber}`);
+  const data = await res.json();
+
+  const translations: Translation[] = data.quran.map((verse: any, index: number) => ({
+    surahNomor: surahNumber,
+    nomorAyat: index + 1,
+    translationId,
+    text: verse.verse,
+    language: TRANSLATIONS.find(t => t.id === translationId)?.language || 'Unknown',
+  }));
+
+  await db.translations.bulkAdd(translations);
+  onProgress?.(surahNumber, 114);
+}
+
+export async function getTranslations(surahNumber: number, translationId: string): Promise<Translation[]> {
+  let translations = await db.translations
+    .where('[surahNomor+translationId]')
+    .equals([surahNumber, translationId])
+    .toArray();
+  if (translations.length === 0) {
+    await fetchAndSyncTranslations(surahNumber, translationId);
+    translations = await db.translations
+      .where('[surahNomor+translationId]')
+      .equals([surahNumber, translationId])
+      .toArray();
+  }
+  return translations.sort((a, b) => a.nomorAyat - b.nomorAyat);
+}
+
+export async function getAvailableTranslations(): Promise<typeof TRANSLATIONS> {
+  return TRANSLATIONS;
+}
+
 export async function getJuzVerses(juzNumber: number): Promise<{ verses: Verse[]; surahs: Surah[] }> {
   const juz = JUZ_DATA.find(j => j.juz === juzNumber);
   if (!juz) return { verses: [], surahs: [] };
@@ -132,24 +186,6 @@ export async function getJuzVerses(juzNumber: number): Promise<{ verses: Verse[]
   }
 
   return { verses: allVerses, surahs };
-}
-
-interface PrayerTimesResponse {
-  timings: {
-    Fajr: string;
-    Dhuhr: string;
-    Asr: string;
-    Maghrib: string;
-    Isha: string;
-    Sunrise: string;
-  };
-  date: {
-    hijri: {
-      day: string;
-      month: { en: string; ar: string };
-      year: string;
-    };
-  };
 }
 
 export async function searchVerses(query: string): Promise<Verse[]> {

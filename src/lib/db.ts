@@ -53,6 +53,15 @@ export interface Bookmark {
   isLastRead?: boolean;
 }
 
+export interface Translation {
+  id?: number;
+  surahNomor: number;
+  nomorAyat: number;
+  translationId: string;
+  text: string;
+  language: string;
+}
+
 export interface SyncMeta {
   key: string;
   value: string;
@@ -65,16 +74,18 @@ class QuranDatabase extends Dexie {
   khatamPlans!: Table<KhatamPlan, number>;
   dzikirCounts!: Table<DzikirCount, number>;
   bookmarks!: Table<Bookmark, number>;
+  translations!: Table<Translation, number>;
   syncMeta!: Table<SyncMeta, string>;
 
   constructor() {
     super('QuranAppDB');
-    this.version(2).stores({
+    this.version(3).stores({
       surahs: 'nomor, namaLatin',
       verses: '++id, surahNomor, [surahNomor+nomorAyat]',
       khatamPlans: '++id, isActive',
       dzikirCounts: '++id, date',
       bookmarks: '++id, surahNomor, [surahNomor+nomorAyat], isLastRead, createdAt',
+      translations: '++id, surahNomor, [surahNomor+nomorAyat+translationId]',
       syncMeta: 'key',
     });
   }

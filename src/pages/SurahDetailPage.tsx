@@ -1,11 +1,12 @@
 import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, BookOpen, List, ChevronLeft, ChevronRight, Bookmark, BookmarkCheck, Play, Pause, Palette, ChevronUp, ChevronDown } from 'lucide-react';
-import { getVerses } from '@/lib/api';
+import { getVerses, getTranslations, getAvailableTranslations } from '@/lib/api';
 import { db } from '@/lib/db';
-import type { Surah, Verse, Bookmark as BookmarkType } from '@/lib/db';
+import type { Surah, Verse, Bookmark as BookmarkType, Translation } from '@/lib/db';
 import { toast } from 'sonner';
 import { useAudioStore } from '@/stores/audioStore';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 type ViewMode = 'terjemah' | 'mushaf' | 'tajweed';
 
@@ -59,6 +60,9 @@ const SurahDetailPage = () => {
   const navigate = useNavigate();
   const [surah, setSurah] = useState<Surah | null>(null);
   const [verses, setVerses] = useState<Verse[]>([]);
+  const [translations, setTranslations] = useState<Translation[]>([]);
+  const [availableTranslations, setAvailableTranslations] = useState<any[]>([]);
+  const [selectedTranslation, setSelectedTranslation] = useState<string>('id.indonesian');
   const [loading, setLoading] = useState(true);
   const [viewMode, setViewMode] = useState<ViewMode>('terjemah');
   const [bookmarkedAyats, setBookmarkedAyats] = useState<Set<number>>(new Set());
@@ -96,6 +100,14 @@ const SurahDetailPage = () => {
       const v = await getVerses(num);
       setVerses(v);
 
+      // Load available translations
+      const availTrans = await getAvailableTranslations();
+      setAvailableTranslations(availTrans);
+
+      // Load translations for selected
+      const trans = await getTranslations(num, selectedTranslation);
+      setTranslations(trans);
+
       // Load bookmarks for this surah
       const bmarks = await db.bookmarks
         .where('surahNomor').equals(num)
@@ -109,7 +121,15 @@ const SurahDetailPage = () => {
       if (s) saveLastRead(s, 1);
     };
     load();
-  }, [id]);
+  }, [id, selectedTranslation]);
+
+  const handleTranslationChange = async (value: string) => {
+    setSelectedTranslation(value);
+    if (surah) {
+      const trans = await getTranslations(surah.nomor, value);
+      setTranslations(trans);
+    }
+  };
 
   const handleBookmark = async (ayat: number) => {
     if (!surah) return;
@@ -177,6 +197,19 @@ const SurahDetailPage = () => {
             </button>
           </div>
 
+          <Select value={selectedTranslation} onValueChange={handleTranslationChange}>
+            <SelectTrigger className="w-32">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {availableTranslations.map((trans) => (
+                <SelectItem key={trans.id} value={trans.id}>
+                  {trans.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
           <p className="font-arabic text-xl text-primary">{surah?.nama}</p>
         </div>
       </div>
@@ -186,7 +219,7 @@ const SurahDetailPage = () => {
       ) : viewMode === 'tajweed' ? (
         <TajweedView surah={surah} verses={verses} bookmarkedAyats={bookmarkedAyats} onBookmark={handleBookmark} playingAyat={currentSurah === surah?.nomor ? currentAyat : null} onPlayAyat={handlePlayAyat} />
       ) : (
-        <TerjemahView surah={surah} verses={verses} bookmarkedAyats={bookmarkedAyats} onBookmark={handleBookmark} playingAyat={currentSurah === surah?.nomor ? currentAyat : null} onPlayAyat={handlePlayAyat} />
+        <TerjemahView surah={surah} verses={verses} bookmarkedAyats={bookmarkedAyats} onBookmark={handleBookmark} playingAyat={currentSurah === surah?.nomor ? currentAyat : null} onPlayAyat={handlePlayAyat} translations={translations} />
       )}
 
       {/* Prev / Next Surah Navigation */}
@@ -231,7 +264,7 @@ interface ViewProps {
 }
 
 /* ── Terjemah View ── */
-const TerjemahView = ({ surah, verses, bookmarkedAyats, onBookmark, playingAyat, onPlayAyat }: ViewProps) => (
+const TerjemahView = ({ surah, verses, bookmarkedAyats, onBookmark, playingAyat, onPlayAyat, translations }: ViewProps & { translations: Translation[] }) => (
   <>
     {surah && surah.nomor !== 1 && surah.nomor !== 9 && (
       <div className="text-center py-6 px-4">
@@ -244,6 +277,7 @@ const TerjemahView = ({ surah, verses, bookmarkedAyats, onBookmark, playingAyat,
       {verses.map((verse) => {
         const isMarked = bookmarkedAyats.has(verse.nomorAyat);
         const isPlayingThis = playingAyat === verse.nomorAyat;
+        const translation = translations.find(t => t.nomorAyat === verse.nomorAyat);
         return (
           <div key={verse.nomorAyat} className={`p-4 rounded-xl bg-card border animate-fade-in ${isMarked ? 'border-accent shadow-sm' : 'border-border'} ${isPlayingThis ? 'ring-2 ring-primary/40' : ''}`}>
             <div className="flex items-center justify-between mb-3">
@@ -274,7 +308,10 @@ const TerjemahView = ({ surah, verses, bookmarkedAyats, onBookmark, playingAyat,
               {verse.teksArab}
             </p>
             <p className="text-sm text-primary/80 italic mb-2">{verse.teksLatin}</p>
-            <p className="text-sm text-muted-foreground">{verse.teksIndonesia}</p>
+            <p className="text-sm text-muted-foreground mb-2">{verse.teksIndonesia}</p>
+            {translation && (
+              <p className="text-sm text-foreground border-t pt-2 mt-2">{translation.text}</p>
+            )}
           </div>
         );
       })}
