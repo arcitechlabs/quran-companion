@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, BookOpen, List, ChevronLeft, ChevronRight, Bookmark, BookmarkCheck, Play, Pause, Palette, ChevronUp, ChevronDown } from 'lucide-react';
-import { getVerses, getTranslations, getAvailableTranslations } from '@/lib/api';
+import { getVerses, getTranslations, getAvailableTranslations, getAudioUrl } from '@/lib/api';
 import { db } from '@/lib/db';
 import type { Surah, Verse, Bookmark as BookmarkType, Translation } from '@/lib/db';
 import { toast } from 'sonner';
@@ -67,19 +67,21 @@ const SurahDetailPage = () => {
   const [viewMode, setViewMode] = useState<ViewMode>('terjemah');
   const [bookmarkedAyats, setBookmarkedAyats] = useState<Set<number>>(new Set());
 
-  const { isPlaying, currentSurah, currentAyat, play, pause, setAutoPlayNext } = useAudioStore();
+  const { isPlaying, currentSurah, currentAyat, play, pause, setAutoPlayNext, reciter } = useAudioStore();
 
-  const handlePlayAyat = useCallback((ayat: number) => {
+  const handlePlayAyat = useCallback(async (ayat: number) => {
     if (!surah) return;
     const verse = verses.find(v => v.nomorAyat === ayat);
-    if (!verse?.audio) return;
+    if (!verse) return;
+
+    const audioUrl = await getAudioUrl(surah.nomor, ayat, reciter);
 
     if (currentSurah === surah.nomor && currentAyat === ayat && isPlaying) {
       pause();
     } else {
-      play(surah.nomor, ayat, verse.audio);
+      play(surah.nomor, ayat, audioUrl);
     }
-  }, [surah, verses, currentSurah, currentAyat, isPlaying, play, pause]);
+  }, [surah, verses, currentSurah, currentAyat, isPlaying, play, pause, reciter]);
 
   useEffect(() => {
     if (!surah) return;

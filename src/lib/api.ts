@@ -213,6 +213,13 @@ export async function fetchPrayerTimes(lat: number, lng: number): Promise<Prayer
   return data.data;
 }
 
+export async function getAudioUrl(surah: number, ayat: number, reciter: string): Promise<string> {
+  // Using EveryAyah API
+  const paddedSurah = surah.toString().padStart(3, '0');
+  const paddedAyat = ayat.toString().padStart(3, '0');
+  return `https://www.everyayah.com/data/${reciter}/${paddedSurah}${paddedAyat}.mp3`;
+}
+
 export async function reverseGeocode(lat: number, lng: number): Promise<string> {
   try {
     const res = await fetch(
