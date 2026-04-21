@@ -79,13 +79,13 @@ class QuranDatabase extends Dexie {
 
   constructor() {
     super('QuranAppDB');
-    this.version(3).stores({
+    this.version(4).stores({
       surahs: 'nomor, namaLatin',
       verses: '++id, surahNomor, [surahNomor+nomorAyat]',
       khatamPlans: '++id, isActive',
       dzikirCounts: '++id, date',
       bookmarks: '++id, surahNomor, [surahNomor+nomorAyat], isLastRead, createdAt',
-      translations: '++id, surahNomor, [surahNomor+nomorAyat+translationId]',
+      translations: '++id, surahNomor, [surahNomor+translationId], [surahNomor+nomorAyat+translationId]',
       syncMeta: 'key',
     });
   }

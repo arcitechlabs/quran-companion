@@ -20,6 +20,8 @@ const QiblaPage = React.lazy(() => import("./pages/QiblaPage"));
 const HijriahCalendarPage = React.lazy(() => import("./pages/HijriahCalendarPage"));
 const ZakatPage = React.lazy(() => import("./pages/ZakatPage"));
 const FastingPage = React.lazy(() => import("./pages/FastingPage"));
+const AsmaulHusnaPage = React.lazy(() => import("./pages/AsmaulHusnaPage"));
+const KisahNabiPage = React.lazy(() => import("./pages/KisahNabiPage"));
 const NotFound = React.lazy(() => import("./pages/NotFound"));
 
 const queryClient = new QueryClient();
@@ -64,6 +66,8 @@ const AppContent = () => {
             <Route path="/dzikir" element={<DzikirPage />} />
             <Route path="/khatam" element={<KhatamPage />} />
             <Route path="/doa" element={<DoaPage />} />
+            <Route path="/asmaul-husna" element={<AsmaulHusnaPage />} />
+            <Route path="/kisah-nabi" element={<KisahNabiPage />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </Suspense>

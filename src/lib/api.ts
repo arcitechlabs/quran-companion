@@ -117,16 +117,20 @@ export async function fetchAndSyncTranslations(
     .count();
   if (existing > 0) return;
 
-  const res = await fetch(`${GLOBAL_QURAN_API}/quran/${translationId}/${surahNumber}`);
+  const res = await fetch(`${GLOBAL_QURAN_API}/surah/${surahNumber}/${translationId}`);
   const data = await res.json();
 
-  const translations: Translation[] = data.quran.map((verse: any, index: number) => ({
-    surahNomor: surahNumber,
-    nomorAyat: index + 1,
-    translationId,
-    text: verse.verse,
-    language: TRANSLATIONS.find(t => t.id === translationId)?.language || 'Unknown',
-  }));
+  const translationData = data.quran[translationId];
+  const translations: Translation[] = Object.keys(translationData).map((key) => {
+    const verse = translationData[key];
+    return {
+      surahNomor: surahNumber,
+      nomorAyat: parseInt(key),
+      translationId,
+      text: verse.verse,
+      language: TRANSLATIONS.find(t => t.id === translationId)?.language || 'Unknown',
+    };
+  });
 
   await db.translations.bulkAdd(translations);
   onProgress?.(surahNumber, 114);
@@ -145,6 +149,20 @@ export async function getTranslations(surahNumber: number, translationId: string
       .toArray();
   }
   return translations.sort((a, b) => a.nomorAyat - b.nomorAyat);
+}
+
+export async function getTafsir(surahNumber: number): Promise<{ ayat: number; teks: string }[]> {
+  try {
+    const res = await fetch(`${API_BASE}/tafsir/${surahNumber}`);
+    const data = await res.json();
+    if (data && data.data && data.data.tafsir) {
+      return data.data.tafsir;
+    }
+    return [];
+  } catch (error) {
+    console.error('Failed to fetch tafsir:', error);
+    return [];
+  }
 }
 
 export async function getAvailableTranslations(): Promise<typeof TRANSLATIONS> {

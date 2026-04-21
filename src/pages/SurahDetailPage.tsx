@@ -1,13 +1,17 @@
 import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, BookOpen, List, ChevronLeft, ChevronRight, Bookmark, BookmarkCheck, Play, Pause, Palette, ChevronUp, ChevronDown } from 'lucide-react';
-import { getVerses, getTranslations, getAvailableTranslations, getAudioUrl } from '@/lib/api';
+import { getVerses, getTranslations, getAvailableTranslations, getAudioUrl, getTafsir } from '@/lib/api';
 import { db } from '@/lib/db';
 import type { Surah, Verse, Bookmark as BookmarkType, Translation } from '@/lib/db';
 import { toast } from 'sonner';
 import { useAudioStore } from '@/stores/audioStore';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-
+import { useSettingsStore } from '@/stores/settingsStore';
+import { Settings2, Minus, Plus } from 'lucide-react';
+import { Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerTrigger } from '@/components/ui/drawer';
+import { Switch } from '@/components/ui/switch';
+import { Label } from '@/components/ui/label';
 type ViewMode = 'terjemah' | 'mushaf' | 'tajweed';
 
 const toArabicNumeral = (n: number): string => {
@@ -66,8 +70,13 @@ const SurahDetailPage = () => {
   const [loading, setLoading] = useState(true);
   const [viewMode, setViewMode] = useState<ViewMode>('terjemah');
   const [bookmarkedAyats, setBookmarkedAyats] = useState<Set<number>>(new Set());
+  const [tafsirs, setTafsirs] = useState<{ayat: number, teks: string}[]>([]);
 
   const { isPlaying, currentSurah, currentAyat, play, pause, setAutoPlayNext, reciter } = useAudioStore();
+  const {
+    arabicFontSize, latinFontSize, translationFontSize, showLatin, showTranslation, arabicFontFamily,
+    setArabicFontSize, setLatinFontSize, setTranslationFontSize, setShowLatin, setShowTranslation, setArabicFontFamily
+  } = useSettingsStore();
 
   const handlePlayAyat = useCallback(async (ayat: number) => {
     if (!surah) return;
@@ -116,6 +125,10 @@ const SurahDetailPage = () => {
         .filter(b => !b.isLastRead)
         .toArray();
       setBookmarkedAyats(new Set(bmarks.map(b => b.nomorAyat)));
+
+      // Load tafsir
+      const tafsirData = await getTafsir(num);
+      setTafsirs(tafsirData);
 
       setLoading(false);
 
@@ -197,6 +210,59 @@ const SurahDetailPage = () => {
             >
               <Palette className="w-4 h-4" />
             </button>
+            <Drawer>
+              <DrawerTrigger asChild>
+                <button
+                  className="p-1.5 rounded-md transition-colors text-muted-foreground hover:text-foreground"
+                  title="Pengaturan"
+                >
+                  <Settings2 className="w-4 h-4" />
+                </button>
+              </DrawerTrigger>
+              <DrawerContent>
+                <div className="mx-auto w-full max-w-sm">
+                  <DrawerHeader>
+                    <DrawerTitle>Pengaturan Bacaan</DrawerTitle>
+                  </DrawerHeader>
+                  <div className="p-4 space-y-6">
+                    {/* Font Size Settings */}
+                    <div className="space-y-4">
+                      <div className="flex items-center justify-between">
+                        <Label className="text-sm font-medium">Ukuran Teks Arab</Label>
+                        <div className="flex items-center gap-3">
+                          <button onClick={() => setArabicFontSize(Math.max(16, arabicFontSize - 2))} className="w-8 h-8 flex items-center justify-center rounded-full bg-muted text-foreground hover:bg-primary hover:text-primary-foreground transition-colors"><Minus className="w-4 h-4" /></button>
+                          <span className="text-sm font-medium w-6 text-center">{arabicFontSize}</span>
+                          <button onClick={() => setArabicFontSize(Math.min(48, arabicFontSize + 2))} className="w-8 h-8 flex items-center justify-center rounded-full bg-muted text-foreground hover:bg-primary hover:text-primary-foreground transition-colors"><Plus className="w-4 h-4" /></button>
+                        </div>
+                      </div>
+                      
+                      {/* Font Type */}
+                      <div className="space-y-3">
+                        <Label className="text-sm font-medium">Gaya Huruf Arab</Label>
+                        <div className="flex gap-2">
+                          <button onClick={() => setArabicFontFamily('lpmq')} className={`flex-1 py-2 rounded-lg text-sm border font-medium transition-colors ${arabicFontFamily === 'lpmq' ? 'bg-primary text-primary-foreground border-primary' : 'bg-card text-muted-foreground border-border'}`}>Kemenag (LPMQ)</button>
+                          <button onClick={() => setArabicFontFamily('uthmani')} className={`flex-1 py-2 rounded-lg text-sm border font-medium transition-colors ${arabicFontFamily === 'uthmani' ? 'bg-primary text-primary-foreground border-primary' : 'bg-card text-muted-foreground border-border'}`}>Utsmani</button>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="h-px bg-border" />
+
+                    {/* Visibility Toggles */}
+                    <div className="space-y-4">
+                      <div className="flex items-center justify-between">
+                        <Label htmlFor="t-latin" className="text-sm font-medium">Tampilkan Latin</Label>
+                        <Switch id="t-latin" checked={showLatin} onCheckedChange={setShowLatin} />
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <Label htmlFor="t-trans" className="text-sm font-medium">Tampilkan Terjemahan</Label>
+                        <Switch id="t-trans" checked={showTranslation} onCheckedChange={setShowTranslation} />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </DrawerContent>
+            </Drawer>
           </div>
 
           <Select value={selectedTranslation} onValueChange={handleTranslationChange}>
@@ -221,7 +287,7 @@ const SurahDetailPage = () => {
       ) : viewMode === 'tajweed' ? (
         <TajweedView surah={surah} verses={verses} bookmarkedAyats={bookmarkedAyats} onBookmark={handleBookmark} playingAyat={currentSurah === surah?.nomor ? currentAyat : null} onPlayAyat={handlePlayAyat} />
       ) : (
-        <TerjemahView surah={surah} verses={verses} bookmarkedAyats={bookmarkedAyats} onBookmark={handleBookmark} playingAyat={currentSurah === surah?.nomor ? currentAyat : null} onPlayAyat={handlePlayAyat} translations={translations} />
+        <TerjemahView surah={surah} verses={verses} bookmarkedAyats={bookmarkedAyats} onBookmark={handleBookmark} playingAyat={currentSurah === surah?.nomor ? currentAyat : null} onPlayAyat={handlePlayAyat} translations={translations} tafsirs={tafsirs} />
       )}
 
       {/* Prev / Next Surah Navigation */}
@@ -266,11 +332,15 @@ interface ViewProps {
 }
 
 /* ── Terjemah View ── */
-const TerjemahView = ({ surah, verses, bookmarkedAyats, onBookmark, playingAyat, onPlayAyat, translations }: ViewProps & { translations: Translation[] }) => (
+const TerjemahView = ({ surah, verses, bookmarkedAyats, onBookmark, playingAyat, onPlayAyat, translations, tafsirs }: ViewProps & { translations: Translation[], tafsirs: {ayat: number, teks: string}[] }) => {
+  const { arabicFontSize, arabicFontFamily, showLatin, showTranslation } = useSettingsStore();
+  const [selectedTafsir, setSelectedTafsir] = useState<{ayat: number, teks: string} | null>(null);
+
+  return (
   <>
     {surah && surah.nomor !== 1 && surah.nomor !== 9 && (
       <div className="text-center py-6 px-4">
-        <p className="font-arabic text-2xl text-primary leading-loose">
+        <p className={`font-arabic text-primary leading-loose ${arabicFontFamily === 'uthmani' ? 'font-uthmani' : ''}`} style={{ fontSize: `${arabicFontSize + 4}px` }}>
           بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ
         </p>
       </div>
@@ -280,9 +350,11 @@ const TerjemahView = ({ surah, verses, bookmarkedAyats, onBookmark, playingAyat,
         const isMarked = bookmarkedAyats.has(verse.nomorAyat);
         const isPlayingThis = playingAyat === verse.nomorAyat;
         const translation = translations.find(t => t.nomorAyat === verse.nomorAyat);
+        const tafsir = tafsirs.find(t => t.ayat === verse.nomorAyat);
+
         return (
-          <div key={verse.nomorAyat} className={`p-4 rounded-xl bg-card border animate-fade-in ${isMarked ? 'border-accent shadow-sm' : 'border-border'} ${isPlayingThis ? 'ring-2 ring-primary/40' : ''}`}>
-            <div className="flex items-center justify-between mb-3">
+          <div key={verse.nomorAyat} id={`ayat-${verse.nomorAyat}`} className={`relative p-4 rounded-xl bg-card border animate-fade-in ${isMarked ? 'border-accent shadow-sm' : 'border-border'} ${isPlayingThis ? 'ring-2 ring-primary/40' : ''}`}>
+             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-2">
                 <div className="w-7 h-7 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
                   <span className="text-xs font-bold text-primary">{verse.nomorAyat}</span>
@@ -298,31 +370,61 @@ const TerjemahView = ({ surah, verses, bookmarkedAyats, onBookmark, playingAyat,
                   </button>
                 )}
               </div>
-              <button onClick={() => onBookmark(verse.nomorAyat)} className="p-1.5 rounded-lg hover:bg-muted transition-colors">
-                {isMarked ? (
-                  <BookmarkCheck className="w-4.5 h-4.5 text-accent" />
-                ) : (
-                  <Bookmark className="w-4.5 h-4.5 text-muted-foreground" />
+              <div className="flex items-center gap-1">
+                {tafsir && (
+                  <Drawer open={selectedTafsir?.ayat === verse.nomorAyat} onOpenChange={(open) => !open && setSelectedTafsir(null)}>
+                    <DrawerTrigger asChild>
+                      <button onClick={() => setSelectedTafsir(tafsir)} className="p-1.5 rounded-lg text-primary hover:bg-primary/10 transition-colors flex items-center gap-1 text-xs font-semibold mr-1">
+                        <BookOpen className="w-4 h-4" /> Tafsir
+                      </button>
+                    </DrawerTrigger>
+                    <DrawerContent className="max-h-[85vh]">
+                      <DrawerHeader className="border-b">
+                        <DrawerTitle>Tafsir Ayat {verse.nomorAyat}</DrawerTitle>
+                      </DrawerHeader>
+                      <div className="overflow-y-auto p-4 max-h-[calc(85vh-8rem)]">
+                         <p className={`font-arabic text-right leading-[2.5] text-foreground mb-4 ${arabicFontFamily === 'uthmani' ? 'font-uthmani' : ''}`} style={{ fontSize: `${arabicFontSize-2}px` }} dir="rtl">
+                           {verse.teksArab}
+                         </p>
+                         <div className="prose prose-sm dark:prose-invert max-w-none text-justify text-muted-foreground leading-relaxed">
+                           <p dangerouslySetInnerHTML={{ __html: tafsir?.teks?.replace(/\n/g, '<br/>') || '' }}></p>
+                         </div>
+                      </div>
+                    </DrawerContent>
+                  </Drawer>
                 )}
-              </button>
+                <button onClick={() => onBookmark(verse.nomorAyat)} className="p-1.5 rounded-lg hover:bg-muted transition-colors">
+                  {isMarked ? (
+                    <BookmarkCheck className="w-4.5 h-4.5 text-accent" />
+                  ) : (
+                    <Bookmark className="w-4.5 h-4.5 text-muted-foreground" />
+                  )}
+                </button>
+              </div>
             </div>
-            <p className="font-arabic text-right text-xl leading-[2.5] text-foreground mb-4" dir="rtl">
+            <p className={`font-arabic text-right leading-[2.5] text-foreground mb-4 ${arabicFontFamily === 'uthmani' ? 'font-uthmani' : ''}`} style={{ fontSize: `${arabicFontSize}px` }} dir="rtl">
               {verse.teksArab}
             </p>
-            <p className="text-sm text-primary/80 italic mb-2">{verse.teksLatin}</p>
-            <p className="text-sm text-muted-foreground mb-2">{verse.teksIndonesia}</p>
-            {translation && (
-              <p className="text-sm text-foreground border-t pt-2 mt-2">{translation.text}</p>
+            {showLatin && <p className="text-sm text-primary/80 italic mb-2">{verse.teksLatin}</p>}
+            {showTranslation && (
+              <>
+                <p className="text-sm text-muted-foreground mb-2">{verse.teksIndonesia}</p>
+                {translation && (
+                  <p className="text-sm text-foreground border-t pt-2 mt-2">{translation.text}</p>
+                )}
+              </>
             )}
           </div>
         );
       })}
     </div>
   </>
-);
+  );
+};
 
 /* ── Mushaf View (Paginated) ── */
 const MushafView = ({ surah, verses, bookmarkedAyats, onBookmark, playingAyat, onPlayAyat }: ViewProps) => {
+  const { arabicFontSize, arabicFontFamily } = useSettingsStore();
   const [currentPage, setCurrentPage] = useState(0);
   const totalPages = Math.ceil(verses.length / VERSES_PER_PAGE);
   const pageRef = useRef<HTMLDivElement>(null);
@@ -369,7 +471,7 @@ const MushafView = ({ surah, verses, bookmarkedAyats, onBookmark, playingAyat, o
                     <div className="absolute -top-1 left-1/2 -translate-x-1/2 bg-card px-3">
                       <span className="font-arabic text-xs text-accent">❁</span>
                     </div>
-                    <p className="font-arabic text-2xl text-foreground leading-relaxed">
+                    <p className={`font-arabic text-2xl text-foreground leading-relaxed ${arabicFontFamily === 'uthmani' ? 'font-uthmani' : ''}`}>
                       سُورَةُ {surah?.nama?.replace(/[^\u0600-\u06FF\s]/g, '') || surah?.nama}
                     </p>
                     <p className="font-arabic text-xs text-muted-foreground mt-0.5">
@@ -391,7 +493,7 @@ const MushafView = ({ surah, verses, bookmarkedAyats, onBookmark, playingAyat, o
               )}
 
               <div className="px-5 py-4">
-                <p className="font-arabic text-[1.45rem] leading-[2.8] text-foreground text-justify" dir="rtl" style={{ textAlignLast: 'center' }}>
+                <p className={`font-arabic leading-[2.8] text-foreground text-justify ${arabicFontFamily === 'uthmani' ? 'font-uthmani' : ''}`} dir="rtl" style={{ textAlignLast: 'center', fontSize: `${arabicFontSize + 4}px` }}>
                   {pageVerses.map((verse) => {
                     const isMarked = bookmarkedAyats.has(verse.nomorAyat);
                     const isPlayingThis = playingAyat === verse.nomorAyat;
@@ -486,6 +588,7 @@ function colorizeTajweed(text: string): React.ReactNode[] {
 
 const TajweedView = ({ surah, verses, bookmarkedAyats, onBookmark, playingAyat, onPlayAyat }: ViewProps) => {
   const [showLegend, setShowLegend] = useState(true);
+  const { arabicFontSize, arabicFontFamily, showLatin, showTranslation } = useSettingsStore();
 
   return (
     <>
@@ -556,11 +659,11 @@ const TajweedView = ({ surah, verses, bookmarkedAyats, onBookmark, playingAyat, 
                   )}
                 </button>
               </div>
-              <p className="font-arabic text-right text-xl leading-[2.5] text-foreground mb-4" dir="rtl">
+              <p className={`font-arabic text-right leading-[2.5] text-foreground mb-4 ${arabicFontFamily === 'uthmani' ? 'font-uthmani' : ''}`} dir="rtl" style={{ fontSize: `${arabicFontSize}px` }}>
                 {colorizeTajweed(verse.teksArab)}
               </p>
-              <p className="text-sm text-primary/80 italic mb-2">{verse.teksLatin}</p>
-              <p className="text-sm text-muted-foreground">{verse.teksIndonesia}</p>
+              {showLatin && <p className="text-sm text-primary/80 italic mb-2">{verse.teksLatin}</p>}
+              {showTranslation && <p className="text-sm text-muted-foreground">{verse.teksIndonesia}</p>}
             </div>
           );
         })}
